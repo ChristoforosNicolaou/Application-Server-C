@@ -1,0 +1,45 @@
+HTTP/1.1 Only
+
+Implement Messages/Parsing:
+GET -> respond with file contents. if file is python or php execute and return output
+HEAD -> Only return server header
+DELETE -> Return header & delete file from directory
+POST -> Must check RFC2616 response
+Others -> Not Implemented
+
+Client request:
+GET /sample.html HTTP/1.1
+User-Agent: My_web_browser (IGNORE LINE)
+Host: host:30000 (I think IGNORE LINE)
+Connection: keep-alive (or close)
+
+Server response:
+1 line response (see below)
+Header lines (Server, Connection, Content-Type, Content-Length)
+1 Empty Line
+1 Data
+
+Server responses:
+HTTP/1.1 200 OK
+HTTP/1.1 404 Not Found
+HTTP/1.1 501 Not Implemented
+
+On Server:
+*Ignore all other headers
+While Connection != close
+	receive request
+	response with Connection: keep-alive
+else send response with Connetion: close
+
+Thread pool
+
+Configuration file with:
+THREADS (num threads in pool)
+PORT (server port e.g. 30000)
+HOME (server home directory)
+Maybe also SERVER name (for header response)
+
+Additional:
+Code must have unit test files!!!
+README.txt -> Instructions (1 page)
+Architecture (doc/pdf) -> System architecture, extra functionalities, difficulties (2-3 pages)

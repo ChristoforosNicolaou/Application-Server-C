@@ -15,7 +15,7 @@ Connection: keep-alive (or close)
 
 Server response:
 1 line response (see below)
-Header lines (Server, Connection, Content-Type, Content-Length)
+Header lines (Connection,Server,Content-Type, Content-Length)
 1 Empty Line
 1 Data
 

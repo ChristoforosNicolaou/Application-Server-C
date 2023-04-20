@@ -2,46 +2,117 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
+#include <unistd.h>
 #include <time.h>
+
+
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 #include "helper_functions.h"
 #include "queue.h"
 
+//-------------------------Compile-------------------------//
+//gcc -o test_server test_server.c helper_functions.c queue.c  -lssl -lcrypto -lpthread
+
+
 #define perror2(s, e) fprintf(stderr, "%s: %s\n", s, strerror(e))
 
-#define NUM_THREADS 10
+#define BUF_SIZE 512
+
+int num_threads = 1, port = 80; // Default
+char *home_directory;
+char *server_name;
+
+//TLS
+int sock;
+SSL_CTX *ctx;
 
 // Lock
 pthread_mutex_t mutex;
 pthread_cond_t cond;
 
 // Shared queue
-QUEUE *q;
+QUEUE *socket_queue;
+
+void close_connection(){
+	close(sock);
+    SSL_CTX_free(ctx);
+    cleanup_openssl();
+}
+
+void init_connection(int port,int max_requests){
+	/* initialize OpenSSL */
+    init_openssl();
+    /* setting up algorithms needed by TLS */
+    ctx = create_context();
+    /* specify the certificate and private key to use */
+    configure_context(ctx);
+    sock = create_socket(port,max_requests);
+	return;
+}
 
 // Thread worker
-void *worker(/*void *arg*/)
+void *worker(void *arg)
 {
-	srand(time(NULL));
+	int threadId = *((int*)arg);
 	while(1)
 	{
-		int entry;
+		int socket_fd;
+
 		pthread_mutex_lock(&mutex);
 		// If queue is empty wait
-		if (isEmpty(q))
+		if (isEmpty(socket_queue))
 		{
-			printf("Thread %ld blocked as queue is empty\n", pthread_self());
+			printf("Thread %d blocked as queue is empty\n", threadId);
 			pthread_cond_wait(&cond, &mutex);
 		}
 		
-		// Unlock and continue
-		if (dequeue(q, &entry) != 0)
+		//Serve next in line
+		if (dequeue(socket_queue, &socket_fd) != 0)
 		{
 			fprintf(stderr, "dequeue: queue is not initialized or is empty\n");
 			exit(1);
 		}
+
 		pthread_mutex_unlock(&mutex);
+
+		/* creates a new SSL structure which is needed to hold the data 
+		* for a TLS/SSL connection
+		*/ 
+		SSL *ssl;
+		char* buffer = malloc(BUF_SIZE);
+		ssl = SSL_new(ctx);
+		SSL_set_fd(ssl, socket_fd);
+
+		/* wait for a TLS/SSL client to initiate a TLS/SSL handshake */
+		if (SSL_accept(ssl) <= 0) {
+			ERR_print_errors_fp(stderr);
+		}
+		/* if TLS/SSL handshake was successfully completed, a TLS/SSL 
+		* connection has been established
+		*/
+		else {
+			//SSL_read(ssl, buffer, BUF_SIZE);
+			//printf("%s",buffer);
+			/* writes num bytes from the buffer reply into the 
+			* specified ssl connection
+			*/
+			const char reply[] = "test\n";
+			SSL_write(ssl, reply, strlen(reply));
+		}
+
+		/* close ssl connection */
+		SSL_shutdown(ssl);
+		/* free an allocated SSL structure */
+		SSL_free(ssl);
+		close(socket_fd);
+					
+
 		
-		printf("Thread %ld, Entry: %d\n", pthread_self(), entry);
+		printf("Thread %d, Entry: %d\n", threadId , socket_fd);
 		
 		int r = rand() % 5 + 1;
 		sleep(1 * r);
@@ -136,11 +207,6 @@ int main(int argc, char **argv)
 {
 	char CONF_FILENAME[] = "config.txt";
 
-	int num_threads = 1, port = 80; // Default
-	char *home_directory;
-	char *server_name;
-	
-	
 	if (configure_parameters(CONF_FILENAME, &num_threads, &port, &home_directory, &server_name) < 0)
 	{
 		fprintf(stderr, "Unable to set configuration file parameters.\n");
@@ -151,59 +217,64 @@ int main(int argc, char **argv)
 	printf("Port: %d\n", port);
 	printf("Home: %s\n", home_directory);
 	printf("Server: %s\n", server_name);
-	
-	// Free memory
-	free(home_directory);
-	free(server_name);
-	
-	exit(1);
-	
+
+	pthread_t tid[num_threads];
+	int i, err,threadId[100];
 
 	pthread_mutex_init(&mutex, NULL);
 	pthread_cond_init(&cond, NULL);
 
-	initQueue(&q);
-	
-	pthread_t tid[NUM_THREADS];
-	int i, err;
-	
-	for (i = 0; i < 100; i++)
-	{
-		enqueue(i, q);
-	}
-	
-	for (i = 0; i < NUM_THREADS; i++) 
-	{
-		//bounds[i].low = i*N;
-		//bounds[i].high = bounds[i].low + N;
-		//bounds[i].mysum = 0;
-		
+	initQueue(&socket_queue);
+
+
+	//Spawn threads
+	for (i = 0; i < num_threads; i++) 
+	{	
+		threadId[i]=i;
+
 		// Create threads
-		if (err = pthread_create(&tid[i], NULL, &worker, NULL/*(void *) &bounds[i]*/)) 
+		if (err = pthread_create(&tid[i], NULL, &worker, &threadId[i])) 
 		{
 			perror2("pthread_create", err); 
 			exit(1);
 		}
 	}
 	
-	sleep(12);
+	//Start Listening
+	init_connection(port,num_threads);
+	//------------------------------------------------------------------------------
+
+	/* Handle connections */
+    while(1) {
+        struct sockaddr_in addr;
+        uint len = sizeof(addr);
 	
-	for (i = 0; i < 5; i++)
-	{
-		enqueue(i, q);
+		//Accept connection get socket descriptor
+        int client = accept(sock, (struct sockaddr*)&addr, &len);
+        if (client < 0) {
+            perror("Unable to accept");
+            exit(EXIT_FAILURE);
+        }
+
+		//Queue socket descriptor, wake up a thread
+		enqueue(client, socket_queue);
 		pthread_cond_signal(&cond);
-	}
+    }
+
+	//Stop Listening
+	close_connection();
+	//------------------------------------------------------------------------------
+
+	/*
+	// Free memory
+	free(home_directory);
+	free(server_name);
 	
-	sleep(2);
+	exit(1);
+	*/
 	
-	for (i = 0; i < 30; i++)
-	{
-		enqueue(i, q);
-		pthread_cond_signal(&cond);
-	}
-	
-	// Wait for threads
-	for (i = 0; i < NUM_THREADS; i++) 
+	// Join threads
+	for (i = 0; i < num_threads; i++) 
 	{
 		if (err = pthread_join(tid[i], NULL/*(void **) &status*/)) 
 		{ /* wait for thread to end */

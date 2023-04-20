@@ -29,7 +29,7 @@ int create_socket(int port)
 	perror("Unable to bind");
 	exit(EXIT_FAILURE);
     }
-w
+    
     /* start listening allowing a queue of up to 1 pending connection */
     if (listen(s, 1) < 0) {
 	perror("Unable to listen");

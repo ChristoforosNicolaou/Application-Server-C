@@ -24,8 +24,11 @@
 #define MAXARGS 100
 #define MAXHEADLINES 10
 #define MAX_FILE_EXTENSIONS 13
+#define MAX_REQUEST_METHODS 4
 
+char CONF_FILENAME[] = "config.txt";
 char *file_extensions[MAX_FILE_EXTENSIONS];
+char *request_methods[MAX_REQUEST_METHODS];
 char cwd[1024];
 int num_threads = 1, port = 80; // Default
 char *home_directory;
@@ -320,62 +323,103 @@ void *worker(void *arg)
 			SSL_read(ssl, buffer, BUF_SIZE);
 			//printf("%s",buffer);
 
+			// Tokenize request
 			if ((num_headlines = tokenize(buffer, "\r\n", tokenizedRequest)) < 0)
+			{	
+				printf("Tokenization Error: %d",socket_fd);
+				terminate_Ssl(ssl,socket_fd);
+			}
+			
+			for(i=0;i<num_headlines;i++)
+			{
+				if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
 				{	
 					printf("Tokenization Error: %d",socket_fd);
 					terminate_Ssl(ssl,socket_fd);
 				}
-			
-			for(i=0;i<num_headlines;i++){
-				if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
-					{	
-						printf("Tokenization Error: %d",socket_fd);
-						terminate_Ssl(ssl,socket_fd);
-					}
 			}
-
+			
 			print_parsedRequest(parsedRequest);
-
-			// Get file data
-			char *path, *file, *type;
-			get_file_data(parsedRequest[0][1], file_extensions, &path, &file, &type);
-			printf("Path: %s %ld\n", path, strlen(path));
-			printf("File: %s %ld\n", file, strlen(file));
-			printf("Type: %s %ld\n", type, strlen(type));
 			
-			// Fix path
-			char full_path[strlen(path) + strlen(home_directory) + 1];
-			strcpy(full_path, home_directory);
-			strcat(full_path, path);
-			printf("Full path: %s %ld\n", full_path, strlen(full_path));
-			
-			// Move to given directory
-			if (chdir(full_path) < 0)
+			// Find request method
+			char *request_method = parsedRequest[0][0];
+			int request_index = -1;
+			for (i = 0; i < MAX_REQUEST_METHODS; i++)
 			{
-				perror(path);
-			}
-			else
-			{
-				if (access(file, F_OK) == 0)
+				if (strcmp(request_method, request_methods[i]) == 0)
 				{
-					printf("file exists\n");
+					request_index = i;
+					break;
+				}
+			}
+			
+			if (request_index >= 0)
+			{
+				switch (request_index)
+				{
+					case 0:
+						printf("GET\n");
+						break;
+					case 1:
+						printf("HEAD\n");
+						break;
+					case 2:
+						printf("POST\n");
+						break;
+					case 3:
+						printf("DELETE\n");
+						break;
+					//default:
+					//	printf("Not Implemented\n");
+					//	break;
+				}
+			
+				// Get file data
+				char *path, *file, *type;
+				get_file_data(parsedRequest[0][1], file_extensions, &path, &file, &type);
+				printf("Path: %s %ld\n", path, strlen(path));
+				printf("File: %s %ld\n", file, strlen(file));
+				printf("Type: %s %ld\n", type, strlen(type));
+				
+				// Fix path
+				char full_path[strlen(path) + strlen(home_directory) + 1];
+				strcpy(full_path, home_directory);
+				strcat(full_path, path);
+				printf("Full path: %s %ld\n", full_path, strlen(full_path));
+				
+				// Move to given directory
+				if (chdir(full_path) < 0)
+				{
+					perror(path);
 				}
 				else
 				{
-					perror(file);
+					if (access(file, F_OK) == 0)
+					{
+						printf("file exists\n");
+					}
+					else
+					{
+						perror(file);
+					}
 				}
-			}
 
-			// Free data
-			free(path);
-			free(file);
-			// free(type); // NOT NEEDED - type is const char *
+				// Free data
+				free(path);
+				free(file);
+				// free(type); // NOT NEEDED - type is const char *
+				
+				// Change back to home directory 
+				if (chdir(cwd) < 0)
+				{
+					perror("cd");
+					exit(1);
+				}
 			
-			// Change back to home directory 
-			if (chdir(cwd) < 0)
+			}
+			else
 			{
-				perror("cd");
-				exit(1);
+				printf("Method not implemented!\n");
 			}
 			
 			//const char reply[] = "test\n";
@@ -408,8 +452,11 @@ int main(int argc, char **argv)
 	file_extensions[10] = "jpg";
 	file_extensions[11] = "gif";
 	file_extensions[12] = "pdf";
-
-	char CONF_FILENAME[] = "config.txt";
+	
+	request_methods[0] = "GET";
+	request_methods[1] = "HEAD";
+	request_methods[2] = "POST";
+	request_methods[3] = "DELETE";
 
 	if (configure_parameters(CONF_FILENAME, &num_threads, &port, &home_directory, &server_name) < 0)
 	{

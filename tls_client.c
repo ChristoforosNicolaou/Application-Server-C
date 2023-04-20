@@ -3,7 +3,7 @@
  * purpose:     Example code for building a SSL connection and  *
  *              retrieving the server certificate               *                           *
  *                                                              *
- * gcc -o tls_client tls_client.c -lssl -lcrypto                *
+ * gcc -o tls_client tls_client.c -lssl -lcrypto -Wno-deprecated-declarations*
  * ------------------------------------------------------------ */
 
 #include <sys/socket.h>
@@ -128,7 +128,8 @@ int main() {
   /* ---------------------------------------------------------- *
    * perform ssl reads/writes                                   *
    * -----------------------------------------------------------*/
-  SSL_write(ssl, buff, 255);
+    SSL_write(ssl, buff, 255);
+
   BIO_printf(outbio, "%s", buff);
 
   /* ---------------------------------------------------------- *

@@ -5,6 +5,8 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
+#include <fcntl.h>
+
 
 
 #include <sys/socket.h>
@@ -16,7 +18,7 @@
 #include "queue.h"
 
 //-------------------------Compile-------------------------//
-//gcc -o test_server test_server.c helper_functions.c queue.c  -lssl -lcrypto -lpthread
+//gcc -o test_server test_server.c helper_functions.c queue.c  -lssl -lcrypto -lpthread -Wno-deprecated-declarations
 
 
 #define perror2(s, e) fprintf(stderr, "%s: %s\n", s, strerror(e))
@@ -44,6 +46,16 @@ pthread_cond_t cond;
 
 // Shared queue
 QUEUE *socket_queue;
+
+//Head reply struct
+struct head_struct {
+	int msg;
+	int length;
+	char* server;
+	char* connection;
+	char* type;
+	char* body;
+}; 
 
 
 void close_connection(){
@@ -271,6 +283,178 @@ void get_file_data(char *path, char *file_extensions[MAX_FILE_EXTENSIONS], char 
 		free(ext);
 	}
 }
+char *readFile(char *filename,struct head_struct* replyStruct) {
+    FILE *file = fopen(filename, "rb");
+    if (file == NULL) {
+        return NULL;
+    }
+
+    // Determine the file size
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    rewind(file);
+
+	replyStruct->length=size;
+
+    // Allocate memory for the buffer
+    char *buffer = (char *) malloc(size);
+    if (buffer == NULL) {
+        fclose(file);
+        return NULL;
+    }
+
+    // Read the file into the buffer
+    size_t bytesRead = fread(buffer, 1, size, file);
+    if (bytesRead != size) {
+        fclose(file);
+        free(buffer);
+        return NULL;
+    }
+
+	//Null Terminate
+	buffer[size] = '\0';
+
+    fclose(file);
+    return buffer;
+}
+
+
+// Returns the server response string
+char *get_response_string(struct head_struct *header)
+{
+	char *s_msg;
+
+	// Get message from code
+	switch (header->msg)
+	{
+		case 200:
+			s_msg = "OK";
+			break;
+		case 404:
+			s_msg = "Not Found";
+			break;
+		case 501:
+		default:
+			s_msg = "Not Implemented";
+			break;
+	}
+
+	char *response;
+	
+	// If only header
+	if (header->body == NULL)
+	{
+		response = (char *) malloc(200);
+		if (response == NULL)
+		{
+			perror("malloc");
+			return NULL;
+		}
+		
+	}
+	else
+	{
+		response = (char *) malloc(200 + header->length);
+	}
+	
+	if (response == NULL)
+	{
+		perror("malloc");
+		return NULL;
+	}
+	
+	sprintf(response, 	"HTTP/1.1 %d %s\r\n"
+				"Server: %s\r\n"
+				"Content-Length: %d\r\n"
+				"Connection: %s\r\n"
+				"Content-Type: %s\r\n%s",
+				 header->msg, s_msg, header->server, header->length, header->connection, header->type, (header->body != NULL) ? "\r\n" : "");
+	
+	int i = 0;
+	int c = strlen(response);
+	// Copy body
+	if (header->body != NULL)
+	{
+		while (i < header->length)
+		{
+			response[i + c] = header->body[i];
+			i++;
+		}
+		// Not sure if needed:
+		response[i++ + c] = '\r';
+		response[i++ + c] = '\n';
+		//response[i + c] = '\0'; 
+		//printf("\n%d\n",(c));
+	}
+	
+	return (char *) realloc(response, i + c);
+}
+
+
+void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct* replyStruct,int request_id){
+				// Get file data
+				char *path, *file, *type;
+				get_file_data(parsedRequest[0][1], file_extensions, &path, &file, &type);
+
+				replyStruct->server= server_name;
+				replyStruct->type= type;
+				replyStruct->connection=parsedRequest[3][1];
+
+				/*
+				printf("Path: %s %ld\n", path, strlen(path));
+				printf("File: %s %ld\n", file, strlen(file));
+				printf("Type: %s %ld\n", type, strlen(type));
+				*/
+
+				// Fix path
+				char full_path[strlen(path) + strlen(home_directory) + 1];
+				strcpy(full_path, home_directory);
+				strcat(full_path, path);
+				//printf("Full path: %s %ld\n", full_path, strlen(full_path));
+				
+				// Move to given directory
+				if (chdir(full_path) < 0)
+				{
+					perror(path);
+				}
+				else
+				{
+					if (access(file, F_OK) == 0)
+					{
+						replyStruct->body = readFile(file,replyStruct);
+						replyStruct->msg= 200;
+						
+						if(request_id==3){
+							if(remove(file)!=0){
+								//perror("Delete");
+								replyStruct->msg= 404;
+							}
+						}
+
+						
+						//printf("file exists\n");
+					}
+					else
+					{
+						replyStruct->body=NULL;
+						replyStruct->msg= 404;
+						replyStruct->length=0;
+						//perror(file);
+					}
+				}
+
+				// Free data
+				free(path);
+				free(file);
+				// free(type); // NOT NEEDED - type is const char *
+	
+				// Change back to home directory 
+				if (chdir(cwd) < 0)
+				{
+					perror("cd");
+					exit(1);
+				}
+}
 
 // Thread worker
 void *worker(void *arg)
@@ -305,7 +489,8 @@ void *worker(void *arg)
 		SSL *ssl;
 		int num_headlines=-1;
 		int i=0;
-		char buffer[BUF_SIZE];
+		char buffer[BUF_SIZE];	
+		struct head_struct replyStruct;
 		char* tokenizedRequest[MAXHEADLINES];
 		char* parsedRequest[MAXHEADLINES][MAXARGS];
 
@@ -320,108 +505,73 @@ void *worker(void *arg)
 		* connection has been established
 		*/
 		else {
-			SSL_read(ssl, buffer, BUF_SIZE);
-			//printf("%s",buffer);
+			do{
+				
+				SSL_read(ssl, buffer, BUF_SIZE);
+				//printf("%s",buffer);
 
-			// Tokenize request
-			if ((num_headlines = tokenize(buffer, "\r\n", tokenizedRequest)) < 0)
-			{	
-				printf("Tokenization Error: %d",socket_fd);
-				terminate_Ssl(ssl,socket_fd);
-			}
-			
-			for(i=0;i<num_headlines;i++)
-			{
-				if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
+				// Tokenize request
+				if ((num_headlines = tokenize(buffer, "\r\n", tokenizedRequest)) < 0)
 				{	
 					printf("Tokenization Error: %d",socket_fd);
 					terminate_Ssl(ssl,socket_fd);
 				}
-			}
-			
-			print_parsedRequest(parsedRequest);
-			
-			// Find request method
-			char *request_method = parsedRequest[0][0];
-			int request_index = -1;
-			for (i = 0; i < MAX_REQUEST_METHODS; i++)
-			{
-				if (strcmp(request_method, request_methods[i]) == 0)
-				{
-					request_index = i;
-					break;
-				}
-			}
-			
-			if (request_index >= 0)
-			{
-				switch (request_index)
-				{
-					case 0:
-						printf("GET\n");
-						break;
-					case 1:
-						printf("HEAD\n");
-						break;
-					case 2:
-						printf("POST\n");
-						break;
-					case 3:
-						printf("DELETE\n");
-						break;
-					//default:
-					//	printf("Not Implemented\n");
-					//	break;
-				}
-			
-				// Get file data
-				char *path, *file, *type;
-				get_file_data(parsedRequest[0][1], file_extensions, &path, &file, &type);
-				printf("Path: %s %ld\n", path, strlen(path));
-				printf("File: %s %ld\n", file, strlen(file));
-				printf("Type: %s %ld\n", type, strlen(type));
 				
-				// Fix path
-				char full_path[strlen(path) + strlen(home_directory) + 1];
-				strcpy(full_path, home_directory);
-				strcat(full_path, path);
-				printf("Full path: %s %ld\n", full_path, strlen(full_path));
-				
-				// Move to given directory
-				if (chdir(full_path) < 0)
+				for(i=0;i<num_headlines;i++)
 				{
-					perror(path);
+					if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
+					{	
+						printf("Tokenization Error: %d",socket_fd);
+						terminate_Ssl(ssl,socket_fd);
+					}
+				}
+				
+				print_parsedRequest(parsedRequest);
+				
+				// Find request method
+				int request_index = -1;
+				for (i = 0; i < MAX_REQUEST_METHODS; i++)
+				{
+					if (strcmp(parsedRequest[0][0], request_methods[i]) == 0)
+					{
+						request_index = i;
+						break;
+					}
+				}
+				
+				if (request_index >= 0)
+				{
+					switch (request_index)
+					{
+						case 0:
+							get_request(parsedRequest,&replyStruct,request_index);
+							//printf("GET\n");
+							break;
+						case 1:
+							get_request(parsedRequest,&replyStruct,request_index);
+							replyStruct.body=NULL;
+							//printf("HEAD\n");
+							break;
+						case 2:
+							printf("POST\n");
+							break;
+						case 3:
+							get_request(parsedRequest,&replyStruct,request_index);
+							replyStruct.body=NULL;
+							printf("DELETE\n");
+							break;
+						//default:
+						//	printf("Not Implemented\n");
+						//	break;
+					}
+					printf("%s",get_response_string(&replyStruct));
+				
 				}
 				else
 				{
-					if (access(file, F_OK) == 0)
-					{
-						printf("file exists\n");
-					}
-					else
-					{
-						perror(file);
-					}
+					printf("Method not implemented!\n");
 				}
-
-				// Free data
-				free(path);
-				free(file);
-				// free(type); // NOT NEEDED - type is const char *
-				
-				// Change back to home directory 
-				if (chdir(cwd) < 0)
-				{
-					perror("cd");
-					exit(1);
-				}
-			
-			}
-			else
-			{
-				printf("Method not implemented!\n");
-			}
-			
+			}while(strcmp(parsedRequest[3][1],"close")!=0);
 			//const char reply[] = "test\n";
 			//SSL_write(ssl, reply, strlen(reply));
 		}

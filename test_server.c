@@ -19,8 +19,9 @@
 
 
 #define perror2(s, e) fprintf(stderr, "%s: %s\n", s, strerror(e))
-
 #define BUF_SIZE 512
+#define MAXARGS 100
+#define MAXHEADLINES 10
 
 int num_threads = 1, port = 80; // Default
 char *home_directory;
@@ -54,6 +55,31 @@ void init_connection(int port,int max_requests){
 	return;
 }
 
+
+void terminate_Ssl(SSL *ssl, int socket_fd){
+	SSL_shutdown(ssl);
+	/* free an allocated SSL structure */
+	SSL_free(ssl);
+	close(socket_fd);
+	return;
+}
+
+void print_parsedRequest(char* parsedRequest[MAXHEADLINES][MAXARGS]){
+	int i=0;
+	int j=0;
+
+	while(parsedRequest[i][0]!= NULL){
+		while(parsedRequest[i][j]!= NULL){
+			printf("|%s|",parsedRequest[i][j]);
+			j++;
+		}
+		i++;
+		j=0;
+		printf("\n");
+	}
+	return;
+}
+
 // Thread worker
 void *worker(void *arg)
 {
@@ -66,7 +92,7 @@ void *worker(void *arg)
 		// If queue is empty wait
 		if (isEmpty(socket_queue))
 		{
-			printf("Thread %d blocked as queue is empty\n", threadId);
+			//printf("Thread %d blocked as queue is empty\n", threadId);
 			pthread_cond_wait(&cond, &mutex);
 		}
 		
@@ -78,12 +104,17 @@ void *worker(void *arg)
 		}
 
 		pthread_mutex_unlock(&mutex);
-
+		printf("Thread %d, Entry: %d\n", threadId , socket_fd);
 		/* creates a new SSL structure which is needed to hold the data 
 		* for a TLS/SSL connection
 		*/ 
 		SSL *ssl;
-		char* buffer = malloc(BUF_SIZE);
+		int num_headlines=-1;
+		int i=0;
+		char buffer[BUF_SIZE];
+		char* tokenizedRequest[MAXHEADLINES];
+		char* parsedRequest[MAXHEADLINES][MAXARGS];
+
 		ssl = SSL_new(ctx);
 		SSL_set_fd(ssl, socket_fd);
 
@@ -95,27 +126,34 @@ void *worker(void *arg)
 		* connection has been established
 		*/
 		else {
-			//SSL_read(ssl, buffer, BUF_SIZE);
+			SSL_read(ssl, buffer, BUF_SIZE);
 			//printf("%s",buffer);
-			/* writes num bytes from the buffer reply into the 
-			* specified ssl connection
-			*/
-			const char reply[] = "test\n";
-			SSL_write(ssl, reply, strlen(reply));
+
+			if ((num_headlines = tokenize(buffer, "\r\n", tokenizedRequest)) < 0)
+				{	
+					printf("Tokenization Error: %d",socket_fd);
+					terminate_Ssl(ssl,socket_fd);
+				}
+			
+			for(i=0;i<num_headlines;i++){
+				if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
+					{	
+						printf("Tokenization Error: %d",socket_fd);
+						terminate_Ssl(ssl,socket_fd);
+					}
+			}
+
+			print_parsedRequest(parsedRequest);
+			
+			//const char reply[] = "test\n";
+			//SSL_write(ssl, reply, strlen(reply));
 		}
 
-		/* close ssl connection */
-		SSL_shutdown(ssl);
-		/* free an allocated SSL structure */
-		SSL_free(ssl);
-		close(socket_fd);
-					
+		printf("Socket connection %d closed",socket_fd);
+		terminate_Ssl(ssl,socket_fd);
 
-		
-		printf("Thread %d, Entry: %d\n", threadId , socket_fd);
-		
-		int r = rand() % 5 + 1;
-		sleep(1 * r);
+					
+		//printf("Thread %d, Entry: %d\n", threadId , socket_fd);
 	}
 	
 	pthread_exit(NULL);

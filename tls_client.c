@@ -29,8 +29,8 @@ int create_socket(char[], BIO *);
 
 int main() {
 
-  char           dest_url[] = "https://localhost:4433";
-  char 		      buff[255] = {};
+  char           dest_url[] = "https://localhost:30000";
+  char 		      buff[255] = {"GET /dir/non-existent.gif HTTP/1.1\r\nUser-Agent: My_web_browser\r\nHost: astarti.cs.ucy.ac.cy:30000\r\nConnection: keep-alive\r\n"};
   BIO              *certbio = NULL;
   BIO               *outbio = NULL;
   X509                *cert = NULL;
@@ -128,7 +128,7 @@ int main() {
   /* ---------------------------------------------------------- *
    * perform ssl reads/writes                                   *
    * -----------------------------------------------------------*/
-  SSL_read(ssl, buff, sizeof(buff));
+  SSL_write(ssl, buff, 255);
   BIO_printf(outbio, "%s", buff);
 
   /* ---------------------------------------------------------- *

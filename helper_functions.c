@@ -26,6 +26,28 @@ int tokenize(char *buf, const char *delimiters, char **tokens)
 	return i; // Return number of tokens
 }
 
+// Returns a substring from start to end
+char *substr(char *string, int start, int end)
+{
+	char *str = (char *) malloc(end - start + 1);
+	if (str == NULL)
+	{
+		perror("malloc");
+		return NULL;
+	}
+	
+	int i = 0;
+	while (i < end - start && start < strlen(string))
+	{
+		str[i] = string[start + i];
+		i++;
+	}
+	str[i] = '\0';
+	return str;
+}
+
+
+// TLS server functionality
 int create_socket(int port,int max_requests)
 {
     int s;
@@ -64,6 +86,7 @@ void init_openssl()
     SSL_load_error_strings();	
     OpenSSL_add_ssl_algorithms();
 }
+
 void cleanup_openssl()
 {
     EVP_cleanup();

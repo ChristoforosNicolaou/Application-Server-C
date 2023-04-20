@@ -15,7 +15,10 @@
 // Tokenize string "buf" into "tokens" based on "delimeters"
 int tokenize(char *buf, const char *delimiter, char **tokens);
 
-//Tls server functionality
+// Returns a substring from start to end
+char *substr(char *string, int start, int end);
+
+//TLS server functionality
 int create_socket(int port,int max_requests);
 void init_openssl();
 void cleanup_openssl();

@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
@@ -22,7 +23,10 @@
 #define BUF_SIZE 512
 #define MAXARGS 100
 #define MAXHEADLINES 10
+#define MAX_FILE_EXTENSIONS 13
 
+char *file_extensions[MAX_FILE_EXTENSIONS];
+char cwd[1024];
 int num_threads = 1, port = 80; // Default
 char *home_directory;
 char *server_name;
@@ -38,8 +42,9 @@ pthread_cond_t cond;
 // Shared queue
 QUEUE *socket_queue;
 
+
 void close_connection(){
-	close(sock);
+    close(sock);
     SSL_CTX_free(ctx);
     cleanup_openssl();
 }
@@ -78,85 +83,6 @@ void print_parsedRequest(char* parsedRequest[MAXHEADLINES][MAXARGS]){
 		printf("\n");
 	}
 	return;
-}
-
-// Thread worker
-void *worker(void *arg)
-{
-	int threadId = *((int*)arg);
-	while(1)
-	{
-		int socket_fd;
-
-		pthread_mutex_lock(&mutex);
-		// If queue is empty wait
-		if (isEmpty(socket_queue))
-		{
-			//printf("Thread %d blocked as queue is empty\n", threadId);
-			pthread_cond_wait(&cond, &mutex);
-		}
-		
-		//Serve next in line
-		if (dequeue(socket_queue, &socket_fd) != 0)
-		{
-			fprintf(stderr, "dequeue: queue is not initialized or is empty\n");
-			exit(1);
-		}
-
-		pthread_mutex_unlock(&mutex);
-		printf("Thread %d, Entry: %d\n", threadId , socket_fd);
-		/* creates a new SSL structure which is needed to hold the data 
-		* for a TLS/SSL connection
-		*/ 
-		SSL *ssl;
-		int num_headlines=-1;
-		int i=0;
-		char buffer[BUF_SIZE];
-		char* tokenizedRequest[MAXHEADLINES];
-		char* parsedRequest[MAXHEADLINES][MAXARGS];
-
-		ssl = SSL_new(ctx);
-		SSL_set_fd(ssl, socket_fd);
-
-		/* wait for a TLS/SSL client to initiate a TLS/SSL handshake */
-		if (SSL_accept(ssl) <= 0) {
-			ERR_print_errors_fp(stderr);
-		}
-		/* if TLS/SSL handshake was successfully completed, a TLS/SSL 
-		* connection has been established
-		*/
-		else {
-			SSL_read(ssl, buffer, BUF_SIZE);
-			//printf("%s",buffer);
-
-			if ((num_headlines = tokenize(buffer, "\r\n", tokenizedRequest)) < 0)
-				{	
-					printf("Tokenization Error: %d",socket_fd);
-					terminate_Ssl(ssl,socket_fd);
-				}
-			
-			for(i=0;i<num_headlines;i++){
-				if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
-					{	
-						printf("Tokenization Error: %d",socket_fd);
-						terminate_Ssl(ssl,socket_fd);
-					}
-			}
-
-			print_parsedRequest(parsedRequest);
-			
-			//const char reply[] = "test\n";
-			//SSL_write(ssl, reply, strlen(reply));
-		}
-
-		printf("Socket connection %d closed",socket_fd);
-		terminate_Ssl(ssl,socket_fd);
-
-					
-		//printf("Thread %d, Entry: %d\n", threadId , socket_fd);
-	}
-	
-	pthread_exit(NULL);
 }
 
 // Configure server parameters
@@ -241,8 +167,248 @@ int configure_parameters(char *filename, int *num_threads, int *port, char **hom
 	return (set_num_threads && set_port && set_home_directory && set_server_name > 0) ? 0 : -1;
 }
 
+// Returns file content type based on extension
+char *get_content_type(char *extension, char *file_extensions[MAX_FILE_EXTENSIONS])
+{
+	int i, index = -1;
+	// Find file extension index
+	for (i = 0; i < MAX_FILE_EXTENSIONS; i++)
+	{
+		if (strcmp(extension, file_extensions[i]) == 0)
+		{
+			index = i;
+			break;
+		}
+	}
+	
+	// Get content type based on extension
+	char *type;
+	switch (index)
+	{
+		case 0: 
+		case 1: 
+		case 2: 
+		case 3: 
+		case 4:
+			type = "text/plain";
+			break;
+		case 5: 
+		case 6:
+			type = "text/html";
+			break;
+		case 7:
+			type = "text/x-php";
+			break;
+		case 8:
+			type = "application/x-python-code";
+			break;
+		case 9:
+		case 10:
+			type = "image/jpeg";
+			break;
+		case 11:
+			type = "image/gif";
+			break;
+		case 12:
+			type = "application/pdf";
+			break;
+		default:
+			type = "application/octet-stream";
+			break;
+	}
+	
+	//char *content_type;
+	//content_type = (char *) malloc(strlen(type) + 1);
+	//strcpy(content_type, type);
+	return type;
+}
+
+// Returns path, file and content type of given path
+void get_file_data(char *path, char *file_extensions[MAX_FILE_EXTENSIONS], char **path_only, char **file, char **content_type)
+{
+	int i;
+	int index_ext = -1, index_file = -1;
+	
+	// Find where to split path, file and extension
+	for (i = strlen(path) - 1; i >= 0; i--)
+	{
+		if (path[i] == '.' && index_ext < 0)
+		{
+			index_ext = i + 1;
+		}
+		
+		else if (path[i] == '/')
+		{
+			index_file = i + 1;
+			break;
+		}
+	}
+	
+	// Get path and file
+	if (index_file < 0)
+	{
+		*path_only = (char *) malloc(2); strcpy(*path_only, ".");
+		*file = substr(path, 0, strlen(path));
+	}
+	else
+	{
+		*path_only = substr(path, 0, index_file);
+		*file = substr(path, index_file, strlen(path));
+	}
+	
+	// Get extension
+	if (index_ext < 0)
+	{
+		*content_type = get_content_type("", file_extensions);
+	}
+	else
+	{
+		char *ext = substr(path, index_ext, strlen(path));
+		*content_type = get_content_type(ext, file_extensions);
+		free(ext);
+	}
+}
+
+// Thread worker
+void *worker(void *arg)
+{
+	int threadId = *((int*)arg);
+	
+	while(1)
+	{
+		int socket_fd;
+
+		pthread_mutex_lock(&mutex);
+		// If queue is empty wait
+		if (isEmpty(socket_queue))
+		{
+			//printf("Thread %d blocked as queue is empty\n", threadId);
+			pthread_cond_wait(&cond, &mutex);
+		}
+		
+		//Serve next in line
+		if (dequeue(socket_queue, &socket_fd) != 0)
+		{
+			fprintf(stderr, "dequeue: queue is not initialized or is empty\n");
+			exit(1);
+		}
+
+		pthread_mutex_unlock(&mutex);
+		
+		printf("Thread %d, Entry: %d\n", threadId , socket_fd);
+		/* creates a new SSL structure which is needed to hold the data 
+		* for a TLS/SSL connection
+		*/ 
+		SSL *ssl;
+		int num_headlines=-1;
+		int i=0;
+		char buffer[BUF_SIZE];
+		char* tokenizedRequest[MAXHEADLINES];
+		char* parsedRequest[MAXHEADLINES][MAXARGS];
+
+		ssl = SSL_new(ctx);
+		SSL_set_fd(ssl, socket_fd);
+
+		/* wait for a TLS/SSL client to initiate a TLS/SSL handshake */
+		if (SSL_accept(ssl) <= 0) {
+			ERR_print_errors_fp(stderr);
+		}
+		/* if TLS/SSL handshake was successfully completed, a TLS/SSL 
+		* connection has been established
+		*/
+		else {
+			SSL_read(ssl, buffer, BUF_SIZE);
+			//printf("%s",buffer);
+
+			if ((num_headlines = tokenize(buffer, "\r\n", tokenizedRequest)) < 0)
+				{	
+					printf("Tokenization Error: %d",socket_fd);
+					terminate_Ssl(ssl,socket_fd);
+				}
+			
+			for(i=0;i<num_headlines;i++){
+				if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
+					{	
+						printf("Tokenization Error: %d",socket_fd);
+						terminate_Ssl(ssl,socket_fd);
+					}
+			}
+
+			print_parsedRequest(parsedRequest);
+
+			// Get file data
+			char *path, *file, *type;
+			get_file_data(parsedRequest[0][1], file_extensions, &path, &file, &type);
+			printf("Path: %s %ld\n", path, strlen(path));
+			printf("File: %s %ld\n", file, strlen(file));
+			printf("Type: %s %ld\n", type, strlen(type));
+			
+			// Fix path
+			char full_path[strlen(path) + strlen(home_directory) + 1];
+			strcpy(full_path, home_directory);
+			strcat(full_path, path);
+			printf("Full path: %s %ld\n", full_path, strlen(full_path));
+			
+			// Move to given directory
+			if (chdir(full_path) < 0)
+			{
+				perror(path);
+			}
+			else
+			{
+				if (access(file, F_OK) == 0)
+				{
+					printf("file exists\n");
+				}
+				else
+				{
+					perror(file);
+				}
+			}
+
+			// Free data
+			free(path);
+			free(file);
+			// free(type); // NOT NEEDED - type is const char *
+			
+			// Change back to home directory 
+			if (chdir(cwd) < 0)
+			{
+				perror("cd");
+				exit(1);
+			}
+			
+			//const char reply[] = "test\n";
+			//SSL_write(ssl, reply, strlen(reply));
+		}
+
+		printf("Socket connection %d closed\n",socket_fd);
+		terminate_Ssl(ssl,socket_fd);
+
+					
+		//printf("Thread %d, Entry: %d\n", threadId , socket_fd);
+	}
+	
+	pthread_exit(NULL);
+}
+
 int main(int argc, char **argv)
 {
+	// Init constants
+	file_extensions[0] = "txt";
+	file_extensions[1] = "sed";
+	file_extensions[2] = "awk";
+	file_extensions[3] = "c";
+	file_extensions[4] = "h";
+	file_extensions[5] = "html";
+	file_extensions[6] = "htm";
+	file_extensions[7] = "php";
+	file_extensions[8] = "py";
+	file_extensions[9] = "jpeg";
+	file_extensions[10] = "jpg";
+	file_extensions[11] = "gif";
+	file_extensions[12] = "pdf";
+
 	char CONF_FILENAME[] = "config.txt";
 
 	if (configure_parameters(CONF_FILENAME, &num_threads, &port, &home_directory, &server_name) < 0)
@@ -255,6 +421,9 @@ int main(int argc, char **argv)
 	printf("Port: %d\n", port);
 	printf("Home: %s\n", home_directory);
 	printf("Server: %s\n", server_name);
+
+	// Get current working directory
+	getcwd(cwd, sizeof(cwd));
 
 	pthread_t tid[num_threads];
 	int i, err,threadId[100];

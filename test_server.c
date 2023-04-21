@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <fcntl.h>
+#include<sys/wait.h>
 
 
 
@@ -27,9 +28,11 @@
 #define MAXHEADLINES 10
 #define MAX_FILE_EXTENSIONS 13
 #define MAX_REQUEST_METHODS 4
+#define MAX_EXEC_TYPE 2
 
 char CONF_FILENAME[] = "config.txt";
 char *file_extensions[MAX_FILE_EXTENSIONS];
+char *exec_type[MAX_EXEC_TYPE];
 char *request_methods[MAX_REQUEST_METHODS];
 char cwd[1024];
 int num_threads = 1, port = 80; // Default
@@ -405,8 +408,85 @@ void not_implemented(struct head_struct* replyStruct, char *connection)
 	strcpy(replyStruct->body, "Method not implemented!\n");
 }
 
+//Execute file
+void execFile(int flag,struct head_struct* replyStruct,char* file)
+{
+	int pipefd[2];
+    pid_t pid;
+    char buffer[1024];
+	char* argv[3]={NULL};
+
+    // create a pipe
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+    }
+
+	pid = fork();
+	if (pid == -1) {
+		exit(1);
+	} else if (pid == 0) {
+		// child process
+        close(pipefd[0]); // close the read end of the pipe
+		// redirect stdout to the write end of the pipe
+        dup2(pipefd[1], STDOUT_FILENO);
+
+		switch(flag){
+			case 0: //python
+				argv[0] = "python";
+				argv[1] = file;
+				argv[2] = NULL;
+                if (execvp("python", argv) < 0) {
+                    perror("execvp");
+                    exit(1);
+                }
+				exit(0);
+			break;
+			case 1: //php
+				argv[0] = "php";
+				argv[1] = file;
+				argv[2] = NULL;
+                if (execvp("php", argv) < 0) {
+                    perror("execvp");
+                    exit(1);
+                }
+				exit(0);
+			break;
+			default:
+				replyStruct->body=NULL;
+				replyStruct->msg= 404;
+				replyStruct->length=0;
+				perror("ContentTypeGet");
+				exit(1);
+		}
+	} else {
+		close(pipefd[1]); // close the write end of the pipe
+
+        // read the output from the child process
+        while (read(pipefd[0], buffer, sizeof(buffer)) > 0) {
+            printf("%s", buffer);
+        }
+		if (buffer == NULL) {
+			replyStruct->body=NULL;
+			replyStruct->msg= 404;
+			replyStruct->length=0;
+            perror("read");
+            exit(EXIT_FAILURE);
+        }
+		
+		printf("Output: %s", buffer);
+		replyStruct->body = buffer;
+		replyStruct->length = sizeof(buffer);
+		replyStruct->msg= 200;
+		wait(NULL); 
+		return;
+	}
+}
+
 void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct* replyStruct,int request_id)
 {
+	int i=0;
+	int flag=-1;
+
 	// Get file data
 	char *path, *file, *type;
 	get_file_data(parsedRequest[0][1], file_extensions, &path, &file, &type);
@@ -431,11 +511,27 @@ void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct*
 	if (chdir(full_path) < 0)
 	{
 		perror(path);
+		exit(1);
 	}
-	else
-	{
-		if (access(file, F_OK) == 0)
-		{
+
+	if (access(file, F_OK) != 0){
+		replyStruct->body=NULL;
+		replyStruct->msg= 404;
+		replyStruct->length=0;
+		//perror(file);
+	}else{
+		
+		for(i=0;i<MAX_EXEC_TYPE;i++){
+			//printf("%s : %s\n", type, exec_type[i]);
+			if(strcmp(type,exec_type[i])==0){
+				flag=i;
+				break;
+			}
+		}
+
+		if(flag>-1){
+			execFile(flag,replyStruct,file);
+		}else{
 			replyStruct->body = readFile(file,replyStruct);
 			replyStruct->msg= 200;
 			
@@ -445,19 +541,10 @@ void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct*
 					replyStruct->msg= 404;
 				}
 			}
-
-			
 			//printf("file exists\n");
 		}
-		else
-		{
-			replyStruct->body=NULL;
-			replyStruct->msg= 404;
-			replyStruct->length=0;
-			//perror(file);
-		}
-	}
 
+	}
 	// Free data
 	free(path);
 	free(file);
@@ -579,7 +666,6 @@ void *worker(void *arg)
 						//	printf("Not Implemented\n");
 						//	break;
 					}
-				
 				}
 				else
 				{
@@ -626,6 +712,9 @@ int main(int argc, char **argv)
 	request_methods[1] = "HEAD";
 	request_methods[2] = "POST";
 	request_methods[3] = "DELETE";
+
+	exec_type[0]= "application/x-python-code";
+	exec_type[1]= "text/x-php";
 
 	if (configure_parameters(CONF_FILENAME, &num_threads, &port, &home_directory, &server_name) < 0)
 	{

@@ -413,7 +413,8 @@ void execFile(int flag,struct head_struct* replyStruct,char* file)
 {
 	int pipefd[2];
     pid_t pid;
-    char buffer[1024];
+    char buffer[2048];
+	int size=0;
 	char* argv[3]={NULL};
 
     // create a pipe
@@ -463,7 +464,7 @@ void execFile(int flag,struct head_struct* replyStruct,char* file)
 
         // read the output from the child process
         while (read(pipefd[0], buffer, sizeof(buffer)) > 0) {
-            printf("%s", buffer);
+            //printf("%s", buffer);
         }
 		if (buffer == NULL) {
 			replyStruct->body=NULL;
@@ -473,9 +474,9 @@ void execFile(int flag,struct head_struct* replyStruct,char* file)
             exit(EXIT_FAILURE);
         }
 		
-		printf("Output: %s", buffer);
+		//printf("Output: %s", buffer);
 		replyStruct->body = buffer;
-		replyStruct->length = sizeof(buffer);
+		replyStruct->length = strlen(buffer);
 		replyStruct->msg= 200;
 		wait(NULL); 
 		return;
@@ -584,7 +585,7 @@ void *worker(void *arg)
 
 		pthread_mutex_unlock(&mutex);
 		
-		printf("Thread %d, Entry: %d\n", threadId , socket_fd);
+		printf("\nThread %d, Entry: %d\n\n", threadId , socket_fd);
 		/* creates a new SSL structure which is needed to hold the data 
 		* for a TLS/SSL connection
 		*/ 
@@ -628,7 +629,7 @@ void *worker(void *arg)
 					}
 				}
 				
-				print_parsedRequest(parsedRequest);
+				//print_parsedRequest(parsedRequest);
 				
 				// Find request method
 				int request_index = -1;

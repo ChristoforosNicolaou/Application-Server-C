@@ -67,12 +67,12 @@ void close_connection(){
 
 void init_connection(int port,int max_requests){
 	/* initialize OpenSSL */
-	init_openssl();
-	/* setting up algorithms needed by TLS */
-	ctx = create_context();
-	/* specify the certificate and private key to use */
-	configure_context(ctx);
-	sock = create_socket(port,max_requests);
+    init_openssl();
+    /* setting up algorithms needed by TLS */
+    ctx = create_context();
+    /* specify the certificate and private key to use */
+    configure_context(ctx);
+    sock = create_socket(port,max_requests);
 	return;
 }
 
@@ -370,8 +370,8 @@ char *get_response_string(struct head_struct *header, int *total_bytes)
 				"Server: %s\r\n"
 				"Content-Length: %d\r\n"
 				"Connection: %s\r\n"
-				"Content-Type: %s\r\n%s",
-				 header->msg, s_msg, header->server, header->length, header->connection, header->type, (header->body != NULL) ? "\r\n" : "");
+				"Content-Type: %s\r\n\r\n",
+				 header->msg, s_msg, header->server, header->length, header->connection, header->type);
 	
 	int i = 0;
 	int c = strlen(response);
@@ -384,16 +384,11 @@ char *get_response_string(struct head_struct *header, int *total_bytes)
 			i++;
 		}
 		// Not sure if needed:
-		response[i++ + c] = '\r';
-		response[i++ + c] = '\n';
-		response[i++ + c] = '\0'; 
+		//response[i++ + c] = '\r';
+		//response[i++ + c] = '\n';
+		//response[i++ + c] = '\0'; 
 		//printf("\n%d\n",(c));
-	}
-	else
-	{
-		response[i++ + c] = '\0';
-	}
-	
+	}	
 	*total_bytes = i + c;
 	return (char *) realloc(response, i + c);
 }
@@ -528,8 +523,7 @@ void split_header_body(char *buf, char *header, char *body, int bytes_read, int 
 	int i = 0, c = 0;
 	int read_header = 1;
 	
-	// -2 is for \r\n
-	while (i < bytes_read - 2)
+	while (i < bytes_read)
 	{
 		// Switch from header to body
 		if (i + 3 < bytes_read && buf[i] == '\r' && buf[i + 1] == '\n' && buf[i + 2] == '\r' && buf[i + 3] == '\n')
@@ -607,7 +601,7 @@ int process_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_stru
 		}
 		
 		write(fd, body, body_bytes);
-		printf("Body bytes: %d\n", body_bytes);
+		//printf("Body bytes: %d\n", body_bytes);
 		
 		close(fd);
 	}
@@ -743,8 +737,8 @@ void *worker(void *arg)
 				// Split request header and body
 				split_header_body(buffer, header, body, bytes_read, &body_bytes);
 				
-				//printf("Header: %s %ld", header, strlen(header));
-				//printf("Body: %s %ld", body, strlen(body));
+				printf("Header: %s %ld\n\n", header, strlen(header));
+				printf("Body: %s %ld\n\n", body, strlen(body));
 
 				// Tokenize request header
 				if ((num_headlines = tokenize(header, "\r\n", tokenizedRequest)) < 0)
@@ -764,7 +758,7 @@ void *worker(void *arg)
 					}
 				}
 				
-				print_parsedRequest(parsedRequest);
+				//print_parsedRequest(parsedRequest);
 				
 				// Find request method
 				int request_index = -1;

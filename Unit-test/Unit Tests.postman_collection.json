@@ -1,0 +1,343 @@
+{
+	"info": {
+		"_postman_id": "b5dc841b-d80c-49de-98a7-946a411d2310",
+		"name": "Unit Tests",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Get php",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept-encoding": true,
+					"accept": true,
+					"connection": true,
+					"content-type": true,
+					"content-length": true
+				},
+				"disableBodyPruning": true,
+				"disableUrlEncoding": false
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Connection",
+						"value": "close",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/x-python-code",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "print(\"Hello, world!Python!\")"
+				},
+				"url": {
+					"raw": "https://localhost:30000/dir1/dir2/Hello.php",
+					"protocol": "https",
+					"host": [
+						"localhost"
+					],
+					"port": "30000",
+					"path": [
+						"dir1",
+						"dir2",
+						"Hello.php"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get python",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept-encoding": true,
+					"accept": true,
+					"connection": true,
+					"content-type": true,
+					"content-length": true
+				},
+				"disableBodyPruning": true,
+				"disableUrlEncoding": false
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Connection",
+						"value": "close",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/x-python-code",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "https://localhost:30000/dir1/dir2/Hello.py",
+					"protocol": "https",
+					"host": [
+						"localhost"
+					],
+					"port": "30000",
+					"path": [
+						"dir1",
+						"dir2",
+						"Hello.py"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Delete python",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept-encoding": true,
+					"accept": true,
+					"connection": true,
+					"content-type": true,
+					"content-length": true
+				},
+				"disableUrlEncoding": false
+			},
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Connection",
+						"value": "close",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/x-python-code",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "https://localhost:30000/dir1/dir2/Hello.py",
+					"protocol": "https",
+					"host": [
+						"localhost"
+					],
+					"port": "30000",
+					"path": [
+						"dir1",
+						"dir2",
+						"Hello.py"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Post new python",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept-encoding": true,
+					"accept": true,
+					"connection": true,
+					"content-type": true,
+					"content-length": true
+				},
+				"disableUrlEncoding": false
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Connection",
+						"value": "close",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/x-python-code",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "print(\"New posted python!\")"
+				},
+				"url": {
+					"raw": "https://localhost:30000/dir1/dir2/Hello.py",
+					"protocol": "https",
+					"host": [
+						"localhost"
+					],
+					"port": "30000",
+					"path": [
+						"dir1",
+						"dir2",
+						"Hello.py"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get new python",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept-encoding": true,
+					"accept": true,
+					"connection": true,
+					"content-type": true,
+					"content-length": true
+				},
+				"disableBodyPruning": true,
+				"disableUrlEncoding": false
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Connection",
+						"value": "close",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/x-python-code",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "https://localhost:30000/dir1/dir2/Hello.py",
+					"protocol": "https",
+					"host": [
+						"localhost"
+					],
+					"port": "30000",
+					"path": [
+						"dir1",
+						"dir2",
+						"Hello.py"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Not Implemented",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept-encoding": true,
+					"accept": true,
+					"connection": true,
+					"content-type": true,
+					"content-length": true
+				},
+				"disableBodyPruning": true,
+				"disableUrlEncoding": false
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Connection",
+						"value": "close",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/x-python-code",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "https://localhost:30000/dir1/dir2/Hello.py",
+					"protocol": "https",
+					"host": [
+						"localhost"
+					],
+					"port": "30000",
+					"path": [
+						"dir1",
+						"dir2",
+						"Hello.py"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Keep Alive",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept-encoding": true,
+					"accept": true,
+					"connection": true,
+					"content-type": true,
+					"content-length": true
+				},
+				"disableBodyPruning": true,
+				"disableUrlEncoding": false
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Connection",
+						"value": "keep-alive",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/x-python-code",
+						"type": "default",
+						"disabled": true
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "https://localhost:30000/dir1/dir2/Hello.py",
+					"protocol": "https",
+					"host": [
+						"localhost"
+					],
+					"port": "30000",
+					"path": [
+						"dir1",
+						"dir2",
+						"Hello.py"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

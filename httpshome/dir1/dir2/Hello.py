@@ -1,1 +1,1 @@
-print("Hello, world!Python!")
+print("New posted python!")

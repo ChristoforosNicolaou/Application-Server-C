@@ -85,6 +85,17 @@ void terminate_Ssl(SSL *ssl, int socket_fd){
 	return;
 }
 
+char* add_null_termination(char* buffer) {
+    size_t length = strlen(buffer);
+    char* new_buffer = malloc(length + 1);  
+    if (new_buffer == NULL) {
+        return NULL; 
+    }
+    memcpy(new_buffer, buffer, length);  
+    new_buffer[length] = '\0'; 
+    return new_buffer;
+}
+
 void print_parsedRequest(char* parsedRequest[MAXHEADLINES][MAXARGS]){
 	int i=0;
 	int j=0;
@@ -686,7 +697,7 @@ void *worker(void *arg)
 
 		pthread_mutex_unlock(&mutex);
 		
-		printf("\nThread %d, Entry: %d\n\n", threadId , socket_fd);
+		printf("Thread %d, Socket Descriptor: %d\n\n", threadId , socket_fd);
 		/* creates a new SSL structure which is needed to hold the data 
 		* for a TLS/SSL connection
 		*/ 
@@ -730,9 +741,11 @@ void *worker(void *arg)
 
 				// Split request header and body
 				split_header_body(buffer, header, body, bytes_read, &body_bytes);
-				
-				printf("Header: %s %ld\n\n", header, strlen(header));
-				printf("Body: %s %ld\n\n", body, strlen(body));
+				printf("***Incoming Request(%ld)***\n",strlen(header));
+				printf("---Header---\n%s\n\n", header);
+
+				if(strlen(body)!=0)
+					printf("---Body(%ld)---\n%s\n\n",strlen(body),body);
 
 				// Tokenize request header
 				if ((num_headlines = tokenize(header, "\r\n", tokenizedRequest)) < 0)
@@ -803,12 +816,12 @@ void *worker(void *arg)
 				char *reply = get_response_string(&replyStruct, &total_bytes);
 				if (reply != NULL)
 				{
-					printf("%s", reply);
+					printf("***Start of Reply Message***\n%s***End of Reply***\n", add_null_termination(reply));
 				
 					SSL_write(ssl, reply, total_bytes);
 					free(reply);
 					
-					printf("Reply sent!\n");
+					printf("Reply sent successfully!\n\n");
 				}
 				else
 				{
@@ -818,7 +831,7 @@ void *worker(void *arg)
 			} while(connection != 0);
 		}
 
-		printf("Socket connection %d closed\n",socket_fd);
+		printf("\nSocket connection %d closed\n",socket_fd);
 		terminate_Ssl(ssl, socket_fd);
 
 					
@@ -862,7 +875,7 @@ int main(int argc, char **argv)
 	printf("Threads: %d\n", num_threads);
 	printf("Port: %d\n", port);
 	printf("Home: %s\n", home_directory);
-	printf("Server: %s\n", server_name);
+	printf("Server: %s\n\n", server_name);
 
 	// Get current working directory
 	getcwd(cwd, sizeof(cwd));

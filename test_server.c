@@ -283,7 +283,7 @@ void get_file_data(char *path, char *file_extensions[MAX_FILE_EXTENSIONS], char 
 		free(ext);
 	}
 }
-char *readFile(char *filename,struct head_struct* replyStruct) {
+char *readFile(char *filename, struct head_struct* replyStruct) {
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
         return NULL;
@@ -390,70 +390,85 @@ char *get_response_string(struct head_struct *header)
 	return (char *) realloc(response, i + c);
 }
 
+void not_implemented(struct head_struct* replyStruct, char *connection)
+{
+	if (replyStruct == NULL)
+	{
+		return;
+	}
+	replyStruct->msg = 501;
+	replyStruct->length = 24;
+	replyStruct->server = server_name;
+	replyStruct->type = "text/plain";
+	replyStruct->connection = connection;
+	replyStruct->body = (char *) malloc(24); 
+	strcpy(replyStruct->body, "Method not implemented!\n");
+}
 
-void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct* replyStruct,int request_id){
-				// Get file data
-				char *path, *file, *type;
-				get_file_data(parsedRequest[0][1], file_extensions, &path, &file, &type);
+void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct* replyStruct,int request_id)
+{
+	// Get file data
+	char *path, *file, *type;
+	get_file_data(parsedRequest[0][1], file_extensions, &path, &file, &type);
 
-				replyStruct->server= server_name;
-				replyStruct->type= type;
-				replyStruct->connection=parsedRequest[3][1];
+	replyStruct->server= server_name;
+	replyStruct->type= type;
+	replyStruct->connection=parsedRequest[3][1];
 
-				/*
-				printf("Path: %s %ld\n", path, strlen(path));
-				printf("File: %s %ld\n", file, strlen(file));
-				printf("Type: %s %ld\n", type, strlen(type));
-				*/
+	/*
+	printf("Path: %s %ld\n", path, strlen(path));
+	printf("File: %s %ld\n", file, strlen(file));
+	printf("Type: %s %ld\n", type, strlen(type));
+	*/
 
-				// Fix path
-				char full_path[strlen(path) + strlen(home_directory) + 1];
-				strcpy(full_path, home_directory);
-				strcat(full_path, path);
-				//printf("Full path: %s %ld\n", full_path, strlen(full_path));
-				
-				// Move to given directory
-				if (chdir(full_path) < 0)
-				{
-					perror(path);
-				}
-				else
-				{
-					if (access(file, F_OK) == 0)
-					{
-						replyStruct->body = readFile(file,replyStruct);
-						replyStruct->msg= 200;
-						
-						if(request_id==3){
-							if(remove(file)!=0){
-								//perror("Delete");
-								replyStruct->msg= 404;
-							}
-						}
-
-						
-						//printf("file exists\n");
-					}
-					else
-					{
-						replyStruct->body=NULL;
-						replyStruct->msg= 404;
-						replyStruct->length=0;
-						//perror(file);
-					}
-				}
-
-				// Free data
-				free(path);
-				free(file);
-				// free(type); // NOT NEEDED - type is const char *
+	// Fix path
+	char full_path[strlen(path) + strlen(home_directory) + 1];
+	strcpy(full_path, home_directory);
+	strcat(full_path, path);
+	//printf("Full path: %s %ld\n", full_path, strlen(full_path));
 	
-				// Change back to home directory 
-				if (chdir(cwd) < 0)
-				{
-					perror("cd");
-					exit(1);
+	// Move to given directory
+	if (chdir(full_path) < 0)
+	{
+		perror(path);
+	}
+	else
+	{
+		if (access(file, F_OK) == 0)
+		{
+			replyStruct->body = readFile(file,replyStruct);
+			replyStruct->msg= 200;
+			
+			if(request_id==3){
+				if(remove(file)!=0){
+					//perror("Delete");
+					replyStruct->msg= 404;
 				}
+			}
+
+			
+			//printf("file exists\n");
+		}
+		else
+		{
+			replyStruct->body=NULL;
+			replyStruct->msg= 404;
+			replyStruct->length=0;
+			//perror(file);
+		}
+	}
+
+	// Free data
+	free(path);
+	free(file);
+	// free(type); // NOT NEEDED - type is const char *
+
+	// Change back to home directory 
+	if (chdir(cwd) < 0)
+	{
+		perror("cd");
+		exit(1);
+	}
 }
 
 // Thread worker
@@ -558,22 +573,26 @@ void *worker(void *arg)
 						case 3:
 							get_request(parsedRequest,&replyStruct,request_index);
 							replyStruct.body=NULL;
-							printf("DELETE\n");
+							//printf("DELETE\n");
 							break;
 						//default:
 						//	printf("Not Implemented\n");
 						//	break;
 					}
-					printf("%s",get_response_string(&replyStruct));
 				
 				}
 				else
 				{
 					printf("Method not implemented!\n");
+					not_implemented(&replyStruct, parsedRequest[3][1]);
 				}
-			}while(strcmp(parsedRequest[3][1],"close")!=0);
-			//const char reply[] = "test\n";
-			//SSL_write(ssl, reply, strlen(reply));
+				
+				printf("%s",get_response_string(&replyStruct));
+				
+				//const char reply[] = "test\n";
+				//SSL_write(ssl, reply, strlen(reply));
+				
+			} while(strcmp(parsedRequest[3][1], "close")!=0);
 		}
 
 		printf("Socket connection %d closed\n",socket_fd);
@@ -649,21 +668,21 @@ int main(int argc, char **argv)
 	//------------------------------------------------------------------------------
 
 	/* Handle connections */
-    while(1) {
-        struct sockaddr_in addr;
-        uint len = sizeof(addr);
+	while(1) {
+		struct sockaddr_in addr;
+		uint len = sizeof(addr);
 	
 		//Accept connection get socket descriptor
-        int client = accept(sock, (struct sockaddr*)&addr, &len);
-        if (client < 0) {
-            perror("Unable to accept");
-            exit(EXIT_FAILURE);
-        }
+		int client = accept(sock, (struct sockaddr*)&addr, &len);
+		if (client < 0) {
+			perror("Unable to accept");
+			exit(EXIT_FAILURE);
+		}
 
 		//Queue socket descriptor, wake up a thread
 		enqueue(client, socket_queue);
 		pthread_cond_signal(&cond);
-    }
+	}
 
 	//Stop Listening
 	close_connection();

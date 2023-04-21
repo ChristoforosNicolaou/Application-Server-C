@@ -30,7 +30,7 @@ int create_socket(char[], BIO *);
 int main() {
 
   char           dest_url[] = "https://localhost:30000";
-  char 		      buff[255] = {"GET /dir1/dir2/file.py HTTP/1.1\r\nUser-Agent: My_web_browser\r\nHost: astarti.cs.ucy.ac.cy:30000\r\nConnection: keep-alive\r\n"};
+  char 		      buff[255] = {"OPTIONS /dir1/dir2/file.py HTTP/1.1\r\nUser-Agent: My_web_browser\r\nHost: astarti.cs.ucy.ac.cy:30000\r\nConnection: close\r\n"};
   BIO              *certbio = NULL;
   BIO               *outbio = NULL;
   X509                *cert = NULL;

@@ -320,7 +320,7 @@ char *readFile(char *filename, struct head_struct* replyStruct) {
 
 
 // Returns the server response string
-char *get_response_string(struct head_struct *header)
+char *get_response_string(struct head_struct *header, int *total_bytes)
 {
 	char *s_msg;
 
@@ -383,14 +383,38 @@ char *get_response_string(struct head_struct *header)
 		// Not sure if needed:
 		response[i++ + c] = '\r';
 		response[i++ + c] = '\n';
-		//response[i + c] = '\0'; 
+		response[i++ + c] = '\0'; 
 		//printf("\n%d\n",(c));
 	}
 	
+	*total_bytes = i + c;
 	return (char *) realloc(response, i + c);
 }
 
-void not_implemented(struct head_struct* replyStruct, char *connection)
+int get_connection(char* parsedRequest[MAXHEADLINES][MAXARGS], int num_headlines)
+{
+	// Find connection
+	int connection = 0, i;
+	for (i = 0; i < num_headlines; i++)
+	{
+		if (strcmp(parsedRequest[i][0], "Connection:") == 0)
+		{
+			if (parsedRequest[i][1] != NULL)
+			{
+				if (strcmp(parsedRequest[i][1], "close") != 0)
+				{
+					connection = 1;
+					break;
+				}
+			}
+		}
+	}
+	
+	return connection;
+}
+
+// Response for 501 Not Implemented
+void not_implemented(struct head_struct* replyStruct)
 {
 	if (replyStruct == NULL)
 	{
@@ -400,12 +424,20 @@ void not_implemented(struct head_struct* replyStruct, char *connection)
 	replyStruct->length = 24;
 	replyStruct->server = server_name;
 	replyStruct->type = "text/plain";
-	replyStruct->connection = connection;
-	replyStruct->body = (char *) malloc(24); 
+	replyStruct->body = (char *) malloc(25); 
 	strcpy(replyStruct->body, "Method not implemented!\n");
 }
 
-void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct* replyStruct,int request_id)
+// Clean replyStruct memory
+void free_replyStruct(struct head_struct* replyStruct)
+{
+	if (replyStruct->body != NULL)
+	{
+		free(replyStruct->body);
+	}
+}
+
+void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct* replyStruct, int request_id)
 {
 	// Get file data
 	char *path, *file, *type;
@@ -413,7 +445,6 @@ void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct*
 
 	replyStruct->server= server_name;
 	replyStruct->type= type;
-	replyStruct->connection=parsedRequest[3][1];
 
 	/*
 	printf("Path: %s %ld\n", path, strlen(path));
@@ -506,8 +537,9 @@ void *worker(void *arg)
 		int i=0;
 		char buffer[BUF_SIZE];	
 		struct head_struct replyStruct;
-		char* tokenizedRequest[MAXHEADLINES];
-		char* parsedRequest[MAXHEADLINES][MAXARGS];
+		char *tokenizedRequest[MAXHEADLINES];
+		char *parsedRequest[MAXHEADLINES][MAXARGS];
+		int connection;
 
 		ssl = SSL_new(ctx);
 		SSL_set_fd(ssl, socket_fd);
@@ -520,8 +552,11 @@ void *worker(void *arg)
 		* connection has been established
 		*/
 		else {
-			do{
+			do {
+				// Clean from previous request
+				free_replyStruct(&replyStruct);
 				
+				// Get client request			
 				SSL_read(ssl, buffer, BUF_SIZE);
 				//printf("%s",buffer);
 
@@ -532,7 +567,7 @@ void *worker(void *arg)
 					terminate_Ssl(ssl,socket_fd);
 				}
 				
-				for(i=0;i<num_headlines;i++)
+				for(i = 0; i < num_headlines; i++)
 				{
 					if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
 					{	
@@ -541,6 +576,7 @@ void *worker(void *arg)
 					}
 				}
 				
+				// Test
 				print_parsedRequest(parsedRequest);
 				
 				// Find request method
@@ -554,6 +590,11 @@ void *worker(void *arg)
 					}
 				}
 				
+				// Set connection
+				connection = get_connection(parsedRequest, num_headlines);
+				replyStruct.connection = (connection == 0) ? "close" : "keep-alive";
+				
+				// Perform action based on request method
 				if (request_index >= 0)
 				{
 					switch (request_index)
@@ -575,28 +616,40 @@ void *worker(void *arg)
 							replyStruct.body=NULL;
 							//printf("DELETE\n");
 							break;
-						//default:
-						//	printf("Not Implemented\n");
-						//	break;
+						default:
+							not_implemented(&replyStruct);
+							break;
 					}
 				
 				}
 				else
 				{
-					printf("Method not implemented!\n");
-					not_implemented(&replyStruct, parsedRequest[3][1]);
+					// Method not implemented
+					not_implemented(&replyStruct);
 				}
 				
-				printf("%s",get_response_string(&replyStruct));
+				// Send response to client
+				int total_bytes = 0;
+				char *reply = get_response_string(&replyStruct, &total_bytes);
+				if (reply != NULL)
+				{
+					printf("%s", reply);
 				
-				//const char reply[] = "test\n";
-				//SSL_write(ssl, reply, strlen(reply));
-				
-			} while(strcmp(parsedRequest[3][1], "close")!=0);
+					SSL_write(ssl, reply, total_bytes);
+					free(reply);
+					
+					printf("Reply sent!\n");
+				}
+				else
+				{
+					fprintf(stderr, "Unable to respond.\n");
+				}
+			
+			} while(connection != 0);
 		}
 
 		printf("Socket connection %d closed\n",socket_fd);
-		terminate_Ssl(ssl,socket_fd);
+		terminate_Ssl(ssl, socket_fd);
 
 					
 		//printf("Thread %d, Entry: %d\n", threadId , socket_fd);

@@ -348,12 +348,6 @@ char *get_response_string(struct head_struct *header, int *total_bytes)
 	if (header->body == NULL)
 	{
 		response = (char *) malloc(200);
-		if (response == NULL)
-		{
-			perror("malloc");
-			return NULL;
-		}
-		
 	}
 	else
 	{
@@ -784,9 +778,17 @@ void *worker(void *arg)
 						break;
 					}
 					
-					// HEAD or DELETE
-					if (request_index == 1 || request_index == 2)
+					// HEAD or DELETE or POST
+					if (request_index > 0)
 					{
+						free_replyStruct(&replyStruct);
+						
+						// In our design DELETE and POST do not have a body in the response
+						if (request_index == 2 || request_index == 3)
+						{
+							replyStruct.length = 0;
+						}
+						
 						replyStruct.body = NULL;
 					}
 				}

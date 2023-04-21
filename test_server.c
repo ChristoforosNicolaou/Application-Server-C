@@ -8,8 +8,6 @@
 #include <fcntl.h>
 #include<sys/wait.h>
 
-
-
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <openssl/ssl.h>
@@ -286,6 +284,8 @@ void get_file_data(char *path, char *file_extensions[MAX_FILE_EXTENSIONS], char 
 		free(ext);
 	}
 }
+
+// Read from file
 char *readFile(char *filename, struct head_struct* replyStruct) {
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
@@ -389,11 +389,16 @@ char *get_response_string(struct head_struct *header, int *total_bytes)
 		response[i++ + c] = '\0'; 
 		//printf("\n%d\n",(c));
 	}
+	else
+	{
+		response[i++ + c] = '\0';
+	}
 	
 	*total_bytes = i + c;
 	return (char *) realloc(response, i + c);
 }
 
+// Gets connection type
 int get_connection(char* parsedRequest[MAXHEADLINES][MAXARGS], int num_headlines)
 {
 	// Find connection
@@ -498,8 +503,9 @@ void execFile(int flag,struct head_struct* replyStruct,char* file)
         }
 		
 		//printf("Output: %s", buffer);
-		replyStruct->body = buffer;
 		replyStruct->length = strlen(buffer);
+		replyStruct->body = (char *) malloc(replyStruct->length + 1);
+		strcpy(replyStruct->body, buffer);
 		replyStruct->msg= 200;
 		wait(NULL); 
 		return;
@@ -515,10 +521,50 @@ void free_replyStruct(struct head_struct* replyStruct)
 	}
 }
 
-void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct* replyStruct, int request_id)
+
+// Splits the header and body to two separate strings
+void split_header_body(char *buf, char *header, char *body, int bytes_read, int *body_bytes)
+{
+	int i = 0, c = 0;
+	int read_header = 1;
+	
+	// -2 is for \r\n
+	while (i < bytes_read - 2)
+	{
+		// Switch from header to body
+		if (i + 3 < bytes_read && buf[i] == '\r' && buf[i + 1] == '\n' && buf[i + 2] == '\r' && buf[i + 3] == '\n')
+		{
+			read_header = 0;
+			header[c] = '\0';
+			c = 0;
+			i += 4;
+		}
+		
+		if (read_header)
+		{
+			header[c++] = buf[i];
+		}
+		else
+		{
+			body[c++] = buf[i];
+		}
+		i++;
+	}
+	
+	if (read_header)
+	{
+		header[c] = '\0';
+		c = 0;
+	}
+	
+	body[c] = '\0';
+	*body_bytes = c;
+}
+
+int process_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct* replyStruct, int request_id, char *body, int body_bytes)
 {
 	int i=0;
-	int flag=-1;
+	int exec_flag=-1;
 
 	// Get file data
 	char *path, *file, *type;
@@ -543,40 +589,74 @@ void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct*
 	if (chdir(full_path) < 0)
 	{
 		perror(path);
-		exit(1);
+		return -1;
 	}
 
-	if (access(file, F_OK) != 0){
-		replyStruct->body=NULL;
-		replyStruct->msg= 404;
-		replyStruct->length=0;
-		//perror(file);
-	}else{
-		
-		for(i=0;i<MAX_EXEC_TYPE;i++){
-			//printf("%s : %s\n", type, exec_type[i]);
-			if(strcmp(type,exec_type[i])==0){
-				flag=i;
-				break;
-			}
+	if (request_id == 2) // POST
+	{
+		replyStruct->length = body_bytes;
+		replyStruct->body = NULL;
+		replyStruct->msg = 200;
+	
+		int fd;
+		if ((fd = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0660)) < 0)
+		{
+			replyStruct->msg = 404;
+			perror(file);
+			return -1;
 		}
-
-		if(flag>-1){
-			execFile(flag,replyStruct,file);
-		}else{
-			replyStruct->body = readFile(file,replyStruct);
-			replyStruct->msg= 200;
-			
-			if(request_id==3){
-				if(remove(file)!=0){
-					//perror("Delete");
-					replyStruct->msg= 404;
+		
+		write(fd, body, body_bytes);
+		printf("Body bytes: %d\n", body_bytes);
+		
+		close(fd);
+	}
+	else
+	{
+		if (access(file, F_OK) != 0)
+		{
+			replyStruct->body=NULL;
+			replyStruct->msg= 404;
+			replyStruct->length=0;
+			//perror(file);
+		}
+		else
+		{
+			// Find exec type (py, php)
+			for(i = 0; i < MAX_EXEC_TYPE; i++)
+			{
+				//printf("%s : %s\n", type, exec_type[i]);
+				if(strcmp(type, exec_type[i]) == 0)
+				{
+					exec_flag = i;
+					break;
 				}
 			}
-			//printf("file exists\n");
-		}
 
+			if(exec_flag >= 0 && request_id != 3) // NOT DELETE
+			{
+				// Execute python or php script
+				execFile(exec_flag, replyStruct, file);
+			}
+			else
+			{
+				replyStruct->body = readFile(file, replyStruct);
+				replyStruct->msg= 200;
+				
+				if(request_id == 3) // DELETE
+				{
+					if(remove(file)!=0)
+					{
+						//perror("Delete");
+						replyStruct->msg= 404;
+					}
+				}
+				//printf("file exists\n");
+			}
+
+		}
 	}
+	
 	// Free data
 	free(path);
 	free(file);
@@ -586,8 +666,10 @@ void get_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct*
 	if (chdir(cwd) < 0)
 	{
 		perror("cd");
-		exit(1);
+		return -1;
 	}
+	
+	return 0;
 }
 
 // Thread worker
@@ -623,7 +705,11 @@ void *worker(void *arg)
 		SSL *ssl;
 		int num_headlines=-1;
 		int i=0;
+				
 		char buffer[BUF_SIZE];	
+		char header[BUF_SIZE]; // less than BUF_SIZE
+		char body[BUF_SIZE];
+			
 		struct head_struct replyStruct;
 		char *tokenizedRequest[MAXHEADLINES];
 		char *parsedRequest[MAXHEADLINES][MAXARGS];
@@ -645,22 +731,36 @@ void *worker(void *arg)
 				free_replyStruct(&replyStruct);
 				
 				// Get client request			
-				SSL_read(ssl, buffer, BUF_SIZE);
+				int bytes_read = SSL_read(ssl, buffer, BUF_SIZE), body_bytes = 0;
 				//printf("%s",buffer);
 
-				// Tokenize request
-				if ((num_headlines = tokenize(buffer, "\r\n", tokenizedRequest)) < 0)
+				if (bytes_read < 0)
+				{
+					fprintf(stderr, "No bytes read from socket %d\n", socket_fd);
+					break;
+				}
+
+				// Split request header and body
+				split_header_body(buffer, header, body, bytes_read, &body_bytes);
+				
+				//printf("Header: %s %ld", header, strlen(header));
+				//printf("Body: %s %ld", body, strlen(body));
+
+				// Tokenize request header
+				if ((num_headlines = tokenize(header, "\r\n", tokenizedRequest)) < 0)
 				{	
-					printf("Tokenization Error: %d",socket_fd);
-					terminate_Ssl(ssl,socket_fd);
+					fprintf(stderr, "Tokenization Error: %d\n", socket_fd);
+					//terminate_Ssl(ssl,socket_fd);
+					break;
 				}
 				
 				for(i = 0; i < num_headlines; i++)
 				{
 					if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
 					{	
-						printf("Tokenization Error: %d",socket_fd);
-						terminate_Ssl(ssl,socket_fd);
+						fprintf(stderr, "Tokenization Error: %d\n", socket_fd);
+						//terminate_Ssl(ssl,socket_fd);
+						break;
 					}
 				}
 				
@@ -684,28 +784,16 @@ void *worker(void *arg)
 				// Perform action based on request method
 				if (request_index >= 0)
 				{
-					switch (request_index)
+					if (process_request(parsedRequest, &replyStruct, request_index, body, body_bytes) < 0)
 					{
-						case 0:
-							get_request(parsedRequest,&replyStruct,request_index);
-							//printf("GET\n");
-							break;
-						case 1:
-							get_request(parsedRequest,&replyStruct,request_index);
-							replyStruct.body=NULL;
-							//printf("HEAD\n");
-							break;
-						case 2:
-							printf("POST\n");
-							break;
-						case 3:
-							get_request(parsedRequest,&replyStruct,request_index);
-							replyStruct.body=NULL;
-							//printf("DELETE\n");
-							break;
-						default:
-							not_implemented(&replyStruct);
-							break;
+						fprintf(stderr, "Request processing error: %d\n", socket_fd);
+						break;
+					}
+					
+					// HEAD or DELETE
+					if (request_index == 1 || request_index == 2)
+					{
+						replyStruct.body = NULL;
 					}
 				}
 				else

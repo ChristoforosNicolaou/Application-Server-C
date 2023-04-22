@@ -682,7 +682,7 @@ void *worker(void *arg)
 
 		pthread_mutex_lock(&mutex);
 		// If queue is empty wait
-		if (isEmpty(socket_queue))
+		while (isEmpty(socket_queue))
 		{
 			//printf("Thread %d blocked as queue is empty\n", threadId);
 			pthread_cond_wait(&cond, &mutex);
@@ -919,7 +919,9 @@ int main(int argc, char **argv)
 		}
 
 		//Queue socket descriptor, wake up a thread
+		pthread_mutex_lock(&mutex);
 		enqueue(client, socket_queue);
+		pthread_mutex_unlock(&mutex);
 		pthread_cond_signal(&cond);
 	}
 

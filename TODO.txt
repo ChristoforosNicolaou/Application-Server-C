@@ -1,10 +1,10 @@
 HTTP/1.1 Only
 
 Implement Messages/Parsing:
-GET -> respond with file contents. **if file is python or php execute and return output**
+GET -> respond with file contents. if file is python or php execute and return output
 HEAD -> Only return server header
 DELETE -> Return header & delete file from directory
-**POST -> Must check RFC2616 response**
+POST -> Must check RFC2616 response
 Others -> Not Implemented
 
 Client request:

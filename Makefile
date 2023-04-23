@@ -4,7 +4,7 @@
 # 'make clean' removes all .o and executable
 ###############################################
 CC = gcc # name of the compiler
-CFLAGS = -Wno-deprecated-declarations # compile time flags
+CFLAGS = -Wall -Wno-deprecated-declarations # compile time flags
 LIBS = -lssl -lcrypto -lpthread # linked libraries
 ###############################################
 # list of source flies

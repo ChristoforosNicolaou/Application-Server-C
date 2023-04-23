@@ -47,7 +47,22 @@ char *substr(char *string, int start, int end)
 }
 
 
+// Add a nul character to the end of a buffer so it becomes printable
+char* add_null_termination(char* buffer) 
+{
+    size_t length = strlen(buffer);
+    char* new_buffer = malloc(length + 1);  
+    if (new_buffer == NULL) 
+    {
+        return NULL; 
+    }
+    memcpy(new_buffer, buffer, length);  
+    new_buffer[length] = '\0'; 
+    return new_buffer;
+}
+
 // TLS server functionality
+
 int create_socket(int port,int max_requests)
 {
     int s;

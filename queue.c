@@ -1,9 +1,10 @@
 #include "queue.h"
 
+// Initialize queue
 int initQueue(QUEUE **q) 
 {
     *q = (QUEUE *) malloc(sizeof(QUEUE));
-    if(*q == NULL)
+    if (*q == NULL)
     {
         perror("malloc");
         return EXIT_FAILURE;
@@ -13,15 +14,16 @@ int initQueue(QUEUE **q)
     return EXIT_SUCCESS;
 }
 
+// Insert an item in the queue
 int enqueue(int x, QUEUE *q) 
 {
-    if(q == NULL)
+    if (q == NULL)
     {
         return EXIT_FAILURE;
     }
     
     NODE *temp = (NODE *) malloc(sizeof(NODE));
-    if(temp == NULL) 
+    if (temp == NULL) 
     {
         perror("malloc");
         return EXIT_FAILURE;
@@ -31,7 +33,7 @@ int enqueue(int x, QUEUE *q)
     temp->next = NULL;
 
     // if queue is empty
-    if(q->size == 0) 
+    if (q->size == 0) 
     { 
         q->head = q->tail = temp;
     }
@@ -45,14 +47,15 @@ int enqueue(int x, QUEUE *q)
     return EXIT_SUCCESS;
 }
 
+// Removes the next element from the queue
 int dequeue(QUEUE *q, int *retval) {
-    if(q == NULL || q->size == 0)
+    if (q == NULL || q->size == 0)
     {
         return EXIT_FAILURE;
     }
     NODE *temp = q->head;
     q->head = q->head->next;
-    if(q->size == 1) 
+    if (q->size == 1) 
     {
         q->tail = NULL;
     }
@@ -63,6 +66,7 @@ int dequeue(QUEUE *q, int *retval) {
     return EXIT_SUCCESS;
 }
 
+// Checks if queue is empty
 int isEmpty(QUEUE *q) {
     if (q->size == 0)
     {
@@ -71,16 +75,21 @@ int isEmpty(QUEUE *q) {
     return 0;
 }
 
+// Prints the Queue (for debugging purposes)
 void printQueue(QUEUE *q) {
-    if(q == NULL)
-        return;
+	if (q == NULL)	
+	{
+		return;
+	}
 	NODE *temp = (NODE *) malloc(sizeof(NODE));
-	if(temp == NULL) {
+	if (temp == NULL) 
+	{
 		perror("malloc");
 		exit(-1);
 	}
 	temp = q->head;
-	while(temp != NULL) {
+	while(temp != NULL) 
+	{
 		printf("%d ", temp->data);
 		temp = temp->next;
 	}

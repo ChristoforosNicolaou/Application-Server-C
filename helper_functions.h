@@ -18,6 +18,9 @@ int tokenize(char *buf, const char *delimiter, char **tokens);
 // Returns a substring from start to end
 char *substr(char *string, int start, int end);
 
+// Add a nul character to the end of a buffer so it becomes printable
+char* add_null_termination(char* buffer); 
+
 //TLS server functionality
 int create_socket(int port,int max_requests);
 void init_openssl();

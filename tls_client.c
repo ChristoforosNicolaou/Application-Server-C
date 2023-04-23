@@ -30,7 +30,6 @@ int create_socket(char[], BIO *);
 int main() {
 
   char           dest_url[] = "https://localhost:30000";
-  //char 		      buff[255] = {"OPTIONS /dir1/dir2/file.py HTTP/1.1\r\nUser-Agent: My_web_browser\r\nHost: astarti.cs.ucy.ac.cy:30000\r\nConnection: close\r\n"};
   BIO              *certbio = NULL;
   BIO               *outbio = NULL;
   X509                *cert = NULL;
@@ -130,17 +129,17 @@ int main() {
    * -----------------------------------------------------------*/
     
     
-  char buff[255] = {"GET /dir1/dir2/test.txt HTTP/1.1\r\nUser-Agent: My_web_browser\r\nHost: astarti.cs.ucy.ac.cy:30000\r\nConnection: keep-alive\r\n"};
+  char buff[255] = {"GET /dir1/dir2/file.txt HTTP/1.1\r\nUser-Agent: My_web_browser\r\nHost: astarti.cs.ucy.ac.cy:30000\r\nConnection: keep-alive\r\n"};
   char response[1024];
   
-  SSL_write(ssl, buff, 255);
+  SSL_write(ssl, buff, strlen(buff)+1);
   SSL_read(ssl, response, 1024);
   BIO_printf(outbio, "%s\n", buff);
   BIO_printf(outbio, "%s\n", response);  
     
-  char buff2[255] = {"OPTIONS /dir1/dir2/test.txt HTTP/1.1\r\nUser-Agent: My_web_browser\r\nHost: astarti.cs.ucy.ac.cy:30000\r\nConnection: close\r\n"};
+  char buff2[255] = {"POST /dir1/dir2/file.py HTTP/1.1\r\nUser-Agent: My_web_browser\r\nHost: astarti.cs.ucy.ac.cy:30000\r\nConnection: close\r\n\r\nThis is the\nbody.\nOf the request.\r\n"};
 
-  SSL_write(ssl, buff2, 255);
+  SSL_write(ssl, buff2, strlen(buff2)+1);
   SSL_read(ssl, response, 1024);
   BIO_printf(outbio, "%s\n", buff2);
   BIO_printf(outbio, "%s\n", response);

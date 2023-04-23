@@ -17,22 +17,25 @@
 #include "queue.h"
 
 //-------------------------Compile-------------------------//
-//gcc -o test_server test_server.c helper_functions.c queue.c  -lssl -lcrypto -lpthread -Wno-deprecated-declarations
-
+//gcc -o tls_server tls_server.c helper_functions.c queue.c -lssl -lcrypto -lpthread -Wno-deprecated-declarations -Wall
 
 #define perror2(s, e) fprintf(stderr, "%s: %s\n", s, strerror(e))
-#define BUF_SIZE 512
-#define MAXARGS 100
-#define MAXHEADLINES 10
+#define BUF_SIZE 2048
+#define MAX_ARGS 100
+#define INPUT_BUF_SIZE 512
+#define MAX_TOKENS 64
+#define MAX_HEADLINES 10
 #define MAX_FILE_EXTENSIONS 13
 #define MAX_REQUEST_METHODS 4
 #define MAX_EXEC_TYPE 2
 
+
+// Globals
 char CONF_FILENAME[] = "config.txt";
 char *file_extensions[MAX_FILE_EXTENSIONS];
 char *exec_type[MAX_EXEC_TYPE];
 char *request_methods[MAX_REQUEST_METHODS];
-char cwd[1024];
+char cwd[INPUT_BUF_SIZE];
 int num_threads = 1, port = 80; // Default
 char *home_directory;
 char *server_name;
@@ -58,50 +61,73 @@ struct head_struct {
 	char* body;
 }; 
 
+// Initialize constants
+void init_constants()
+{
+	// Init constants
+	file_extensions[0] = "txt";
+	file_extensions[1] = "sed";
+	file_extensions[2] = "awk";
+	file_extensions[3] = "c";
+	file_extensions[4] = "h";
+	file_extensions[5] = "html";
+	file_extensions[6] = "htm";
+	file_extensions[7] = "php";
+	file_extensions[8] = "py";
+	file_extensions[9] = "jpeg";
+	file_extensions[10] = "jpg";
+	file_extensions[11] = "gif";
+	file_extensions[12] = "pdf";
+	
+	request_methods[0] = "GET";
+	request_methods[1] = "HEAD";
+	request_methods[2] = "POST";
+	request_methods[3] = "DELETE";
 
-void close_connection(){
+	exec_type[0]= "application/x-python-code";
+	exec_type[1]= "text/x-php";	
+}
+
+// Close SSL connection
+void close_connection()
+{
     close(sock);
     SSL_CTX_free(ctx);
     cleanup_openssl();
 }
 
-void init_connection(int port,int max_requests){
+// Initialize SSL connection
+void init_connection(int port, int max_requests)
+{
 	/* initialize OpenSSL */
-    init_openssl();
-    /* setting up algorithms needed by TLS */
-    ctx = create_context();
-    /* specify the certificate and private key to use */
-    configure_context(ctx);
-    sock = create_socket(port,max_requests);
+	init_openssl();
+	/* setting up algorithms needed by TLS */
+	ctx = create_context();
+	/* specify the certificate and private key to use */
+	configure_context(ctx);
+	sock = create_socket(port,max_requests);
 	return;
 }
 
-
-void terminate_Ssl(SSL *ssl, int socket_fd){
+// Terminate SSL connection
+void terminate_SSL(SSL *ssl, int socket_fd)
+{
+	/* close SSL connection */
 	SSL_shutdown(ssl);
 	/* free an allocated SSL structure */
 	SSL_free(ssl);
 	close(socket_fd);
-	return;
 }
 
-char* add_null_termination(char* buffer) {
-    size_t length = strlen(buffer);
-    char* new_buffer = malloc(length + 1);  
-    if (new_buffer == NULL) {
-        return NULL; 
-    }
-    memcpy(new_buffer, buffer, length);  
-    new_buffer[length] = '\0'; 
-    return new_buffer;
-}
-
-void print_parsedRequest(char* parsedRequest[MAXHEADLINES][MAXARGS]){
+// Print parsedRequest, for Debugging purposes
+void print_parsedRequest(char* parsedRequest[MAX_HEADLINES][MAX_ARGS]){
 	int i=0;
 	int j=0;
 
-	while(parsedRequest[i][0]!= NULL){
-		while(parsedRequest[i][j]!= NULL){
+	while(parsedRequest[i][0]!= NULL)
+	{
+		while(parsedRequest[i][j]!= NULL)
+		{
 			printf("|%s|",parsedRequest[i][j]);
 			j++;
 		}
@@ -112,12 +138,26 @@ void print_parsedRequest(char* parsedRequest[MAXHEADLINES][MAXARGS]){
 	return;
 }
 
+// Free parsedRequest 
+void free_parsedRequest(char* parsedRequest[MAX_HEADLINES][MAX_ARGS], int num_headlines)
+{
+	int i = 0, j;
+	while(i < num_headlines)
+	{
+		j = 0;
+		while(parsedRequest[i][j]!= NULL)
+		{
+			free(parsedRequest[i][j]);
+			j++;
+		}
+		i++;
+	}
+	return;
+}
+
 // Configure server parameters
 int configure_parameters(char *filename, int *num_threads, int *port, char **home_directory, char **server_name)
-{
-	int INPUT_BUF_SIZE = 512;
-	int MAX_TOKENS = 64;
-	
+{	
 	int set_num_threads = 0, set_port = 0, set_home_directory = 0, set_server_name = 0;
 	
 	char input_buf[INPUT_BUF_SIZE];
@@ -195,7 +235,7 @@ int configure_parameters(char *filename, int *num_threads, int *port, char **hom
 }
 
 // Returns file content type based on extension
-char *get_content_type(char *extension, char *file_extensions[MAX_FILE_EXTENSIONS])
+char *get_content_type(char *extension)
 {
 	int i, index = -1;
 	// Find file extension index
@@ -244,14 +284,11 @@ char *get_content_type(char *extension, char *file_extensions[MAX_FILE_EXTENSION
 			break;
 	}
 	
-	//char *content_type;
-	//content_type = (char *) malloc(strlen(type) + 1);
-	//strcpy(content_type, type);
 	return type;
 }
 
 // Returns path, file and content type of given path
-void get_file_data(char *path, char *file_extensions[MAX_FILE_EXTENSIONS], char **path_only, char **file, char **content_type)
+void get_file_data(char *path, char **path_only, char **file, char **content_type)
 {
 	int i;
 	int index_ext = -1, index_file = -1;
@@ -274,62 +311,86 @@ void get_file_data(char *path, char *file_extensions[MAX_FILE_EXTENSIONS], char 
 	// Get path and file
 	if (index_file < 0)
 	{
-		*path_only = (char *) malloc(2); strcpy(*path_only, ".");
+		*path_only = (char *) malloc(1); **path_only = '\0';
 		*file = substr(path, 0, strlen(path));
 	}
 	else
 	{
-		*path_only = substr(path, 0, index_file);
-		*file = substr(path, index_file, strlen(path));
+		if (index_file == 1)
+		{
+			*path_only = (char *) malloc(1); **path_only = '\0';
+		}
+		else
+		{
+			*path_only = substr(path, 0, index_file);
+		}
+		
+		if (strlen(path) == 1) // Request is '/' -> return index.html
+		{
+			*file = (char *) malloc(11); strcpy(*file, "index.html");
+			*content_type = get_content_type("html");
+			return;
+		}
+		else
+		{
+			*file = substr(path, index_file, strlen(path));
+		}
 	}
 	
 	// Get extension
 	if (index_ext < 0)
 	{
-		*content_type = get_content_type("", file_extensions);
+		*content_type = get_content_type("");
 	}
 	else
 	{
 		char *ext = substr(path, index_ext, strlen(path));
-		*content_type = get_content_type(ext, file_extensions);
+		*content_type = get_content_type(ext);
 		free(ext);
 	}
 }
 
 // Read from file
-char *readFile(char *filename, struct head_struct* replyStruct) {
-    FILE *file = fopen(filename, "rb");
-    if (file == NULL) {
-        return NULL;
-    }
+char *read_file(char *filename, struct head_struct* replyStruct) 
+{
+	FILE *file = fopen(filename, "rb");
+	if (file == NULL) 
+	{
+		perror(filename);
+		return NULL;
+	}
 
-    // Determine the file size
-    fseek(file, 0, SEEK_END);
-    long size = ftell(file);
-    rewind(file);
+	// Determine the file size
+	fseek(file, 0, SEEK_END);
+	long size = ftell(file);
+	rewind(file);
 
-	replyStruct->length=size;
+	replyStruct->length = size;
 
-    // Allocate memory for the buffer
-    char *buffer = (char *) malloc(size);
-    if (buffer == NULL) {
-        fclose(file);
-        return NULL;
-    }
+	// Allocate memory for the buffer
+	char *buffer = (char *) malloc(size);
+	if (buffer == NULL) 
+	{
+		perror("malloc");		
+		fclose(file);
+		return NULL;
+	}
 
-    // Read the file into the buffer
-    size_t bytesRead = fread(buffer, 1, size, file);
-    if (bytesRead != size) {
-        fclose(file);
-        free(buffer);
-        return NULL;
-    }
+	// Read the file into the buffer
+	size_t bytesRead = fread(buffer, 1, size, file);
+	if (bytesRead != size) 
+	{
+		perror("fread");
+		fclose(file);
+		free(buffer);
+		return NULL;
+	}
 
 	//Null Terminate
 	buffer[size] = '\0';
 
-    fclose(file);
-    return buffer;
+	fclose(file);
+	return buffer;
 }
 
 
@@ -399,9 +460,9 @@ char *get_response_string(struct head_struct *header, int *total_bytes)
 }
 
 // Gets connection type
-int get_connection(char* parsedRequest[MAXHEADLINES][MAXARGS], int num_headlines)
+int get_connection(char* parsedRequest[MAX_HEADLINES][MAX_ARGS], int num_headlines)
 {
-	// Find connection
+	// Find connection parameter
 	int connection = 0, i;
 	for (i = 0; i < num_headlines; i++)
 	{
@@ -436,50 +497,55 @@ void not_implemented(struct head_struct* replyStruct)
 	strcpy(replyStruct->body, "Method not implemented!\n");
 }
 
-//Execute file
-void execFile(int flag,struct head_struct* replyStruct,char* file)
+// Execute file
+void exec_file(int flag, struct head_struct* replyStruct, char* file)
 {
 	int pipefd[2];
-    pid_t pid;
-    char buffer[2048];
-	int size=0;
+	pid_t pid;
+	char buffer[BUF_SIZE];
 	char* argv[3]={NULL};
 
-    // create a pipegcc -o tls_client tls_client.c -lssl -lcrypto -Wno-deprecated-declarations
-    if (pipe(pipefd) == -1) {
-        perror("pipe");
-    }
+	// create a pipegcc -o tls_client tls_client.c -lssl -lcrypto -Wno-deprecated-declarations
+	if (pipe(pipefd) == -1) 
+	{
+		perror("pipe");
+	}
 
-	pid = fork();
-	if (pid == -1) {
+	if ((pid = fork()) < 0) 
+	{
+		perror("fork");
 		exit(1);
-	} else if (pid == 0) {
+	} 
+	else if (pid == 0) 
+	{
 		// child process
-        close(pipefd[0]); // close the read end of the pipe
+		close(pipefd[0]); // close the read end of the pipe
 		// redirect stdout to the write end of the pipe
-        dup2(pipefd[1], STDOUT_FILENO);
+		dup2(pipefd[1], STDOUT_FILENO);
 
-		switch(flag){
+		switch (flag) {
 			case 0: //python
 				argv[0] = "python";
 				argv[1] = file;
 				argv[2] = NULL;
-                if (execvp("python", argv) < 0) {
-                    perror("execvp");
-                    exit(1);
-                }
+				if (execvp("python", argv) < 0) 
+				{
+				    perror("execvp");
+				    exit(1);
+				}
 				exit(0);
-			break;
+				break;
 			case 1: //php
 				argv[0] = "php";
 				argv[1] = file;
 				argv[2] = NULL;
-                if (execvp("php", argv) < 0) {
-                    perror("execvp");
-                    exit(1);
-                }
+				if (execvp("php", argv) < 0) 
+				{
+				    perror("execvp");
+				    exit(1);
+				}
 				exit(0);
-			break;
+				break;
 			default:
 				replyStruct->body=NULL;
 				replyStruct->msg= 404;
@@ -487,21 +553,25 @@ void execFile(int flag,struct head_struct* replyStruct,char* file)
 				perror("ContentTypeGet");
 				exit(1);
 		}
-	} else {
+	} 
+	else // parent process
+	{
 		close(pipefd[1]); // close the write end of the pipe
 
-        // read the output from the child process
-        while (read(pipefd[0], buffer, sizeof(buffer)) > 0) {
-            //printf("%s", buffer);
-        }
-		if (buffer == NULL) {
+		// read the output from the child process
+		while (read(pipefd[0], buffer, sizeof(buffer)) > 0) {
+		//printf("%s", buffer);
+		}
+		
+		if (buffer == NULL) 
+		{
 			replyStruct->body=NULL;
 			replyStruct->msg= 404;
 			replyStruct->length=0;
-            perror("read");
-            exit(EXIT_FAILURE);
-        }
-		
+			perror("read");
+			exit(1);
+		}
+
 		//printf("Output: %s", buffer);
 		replyStruct->length = strlen(buffer);
 		replyStruct->body = (char *) malloc(replyStruct->length + 1);
@@ -519,6 +589,7 @@ void free_replyStruct(struct head_struct* replyStruct)
 	{
 		free(replyStruct->body);
 	}
+	replyStruct->body = NULL;
 }
 
 
@@ -560,14 +631,15 @@ void split_header_body(char *buf, char *header, char *body, int bytes_read, int 
 	*body_bytes = c;
 }
 
-int process_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_struct* replyStruct, int request_id, char *body, int body_bytes)
+// Process the client request
+int process_request(char* parsedRequest[MAX_HEADLINES][MAX_ARGS], struct head_struct* replyStruct, int request_id, char *body, int body_bytes)
 {
 	int i=0;
 	int exec_flag=-1;
 
 	// Get file data
 	char *path, *file, *type;
-	get_file_data(parsedRequest[0][1], file_extensions, &path, &file, &type);
+	get_file_data(parsedRequest[0][1], &path, &file, &type);
 
 	replyStruct->server= server_name;
 	replyStruct->type= type;
@@ -578,7 +650,7 @@ int process_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_stru
 	printf("Type: %s %ld\n", type, strlen(type));
 	*/
 
-	// Fix path
+	// Fix path (add home_direcory)
 	char full_path[strlen(path) + strlen(home_directory) + 1];
 	strcpy(full_path, home_directory);
 	strcat(full_path, path);
@@ -612,6 +684,7 @@ int process_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_stru
 	}
 	else
 	{
+		// If file does not exist
 		if (access(file, F_OK) != 0)
 		{
 			replyStruct->body=NULL;
@@ -635,11 +708,11 @@ int process_request(char* parsedRequest[MAXHEADLINES][MAXARGS], struct head_stru
 			if(exec_flag >= 0 && request_id != 3) // NOT DELETE
 			{
 				// Execute python or php script
-				execFile(exec_flag, replyStruct, file);
+				exec_file(exec_flag, replyStruct, file);
 			}
 			else
 			{
-				replyStruct->body = readFile(file, replyStruct);
+				replyStruct->body = read_file(file, replyStruct);
 				replyStruct->msg= 200;
 				
 				if(request_id == 3) // DELETE
@@ -706,25 +779,27 @@ void *worker(void *arg)
 		int i=0;
 				
 		char buffer[BUF_SIZE];	
-		char header[BUF_SIZE]; // less than BUF_SIZE
+		char header[INPUT_BUF_SIZE]; // less than BUF_SIZE
 		char body[BUF_SIZE];
 			
 		struct head_struct replyStruct;
-		char *tokenizedRequest[MAXHEADLINES];
-		char *parsedRequest[MAXHEADLINES][MAXARGS];
+		char *tokenizedRequest[MAX_HEADLINES];
+		char *parsedRequest[MAX_HEADLINES][MAX_ARGS];
 		int connection;
 
 		ssl = SSL_new(ctx);
 		SSL_set_fd(ssl, socket_fd);
 
 		/* wait for a TLS/SSL client to initiate a TLS/SSL handshake */
-		if (SSL_accept(ssl) <= 0) {
+		if (SSL_accept(ssl) <= 0) 
+		{
 			ERR_print_errors_fp(stderr);
 		}
 		/* if TLS/SSL handshake was successfully completed, a TLS/SSL 
 		* connection has been established
 		*/
-		else {
+		else 
+		{
 			do {
 				// Clean from previous request
 				free_replyStruct(&replyStruct);
@@ -751,16 +826,17 @@ void *worker(void *arg)
 				if ((num_headlines = tokenize(header, "\r\n", tokenizedRequest)) < 0)
 				{	
 					fprintf(stderr, "Tokenization Error: %d\n", socket_fd);
-					//terminate_Ssl(ssl,socket_fd);
+					//terminate_SSL(ssl,socket_fd);
 					break;
 				}
 				
+				// Tokenize each header line
 				for(i = 0; i < num_headlines; i++)
 				{
 					if (tokenize(tokenizedRequest[i], " ", parsedRequest[i]) < 0)
 					{	
 						fprintf(stderr, "Tokenization Error: %d\n", socket_fd);
-						//terminate_Ssl(ssl,socket_fd);
+						//terminate_SSL(ssl,socket_fd);
 						break;
 					}
 				}
@@ -827,45 +903,25 @@ void *worker(void *arg)
 				{
 					fprintf(stderr, "Unable to respond.\n");
 				}
+				
+				// Free memory
+				free_parsedRequest(parsedRequest, num_headlines);
 			
 			} while(connection != 0);
 		}
 
 		printf("\nSocket connection %d closed\n",socket_fd);
-		terminate_Ssl(ssl, socket_fd);
+		terminate_SSL(ssl, socket_fd);
 
-					
 		//printf("Thread %d, Entry: %d\n", threadId , socket_fd);
 	}
 	
+	// Unreachable code
 	pthread_exit(NULL);
 }
 
 int main(int argc, char **argv)
 {
-	// Init constants
-	file_extensions[0] = "txt";
-	file_extensions[1] = "sed";
-	file_extensions[2] = "awk";
-	file_extensions[3] = "c";
-	file_extensions[4] = "h";
-	file_extensions[5] = "html";
-	file_extensions[6] = "htm";
-	file_extensions[7] = "php";
-	file_extensions[8] = "py";
-	file_extensions[9] = "jpeg";
-	file_extensions[10] = "jpg";
-	file_extensions[11] = "gif";
-	file_extensions[12] = "pdf";
-	
-	request_methods[0] = "GET";
-	request_methods[1] = "HEAD";
-	request_methods[2] = "POST";
-	request_methods[3] = "DELETE";
-
-	exec_type[0]= "application/x-python-code";
-	exec_type[1]= "text/x-php";
-
 	if (configure_parameters(CONF_FILENAME, &num_threads, &port, &home_directory, &server_name) < 0)
 	{
 		fprintf(stderr, "Unable to set configuration file parameters.\n");
@@ -881,13 +937,14 @@ int main(int argc, char **argv)
 	getcwd(cwd, sizeof(cwd));
 
 	pthread_t tid[num_threads];
-	int i, err,threadId[100];
+	int i, err, threadId[100];
 
+	init_constants();
+	
 	pthread_mutex_init(&mutex, NULL);
 	pthread_cond_init(&cond, NULL);
 
 	initQueue(&socket_queue);
-
 
 	//Spawn threads
 	for (i = 0; i < num_threads; i++) 
@@ -895,7 +952,7 @@ int main(int argc, char **argv)
 		threadId[i]=i;
 
 		// Create threads
-		if (err = pthread_create(&tid[i], NULL, &worker, &threadId[i])) 
+		if ((err = pthread_create(&tid[i], NULL, &worker, &threadId[i])) != 0) 
 		{
 			perror2("pthread_create", err); 
 			exit(1);
@@ -904,8 +961,8 @@ int main(int argc, char **argv)
 	
 	//Start Listening
 	init_connection(port,num_threads);
+	
 	//------------------------------------------------------------------------------
-
 	/* Handle connections */
 	while(1) {
 		struct sockaddr_in addr;
@@ -914,8 +971,8 @@ int main(int argc, char **argv)
 		//Accept connection get socket descriptor
 		int client = accept(sock, (struct sockaddr*)&addr, &len);
 		if (client < 0) {
-			perror("Unable to accept");
-			exit(EXIT_FAILURE);
+			perror("Unable to accept client request");
+			exit(1);
 		}
 
 		//Queue socket descriptor, wake up a thread
@@ -929,18 +986,17 @@ int main(int argc, char **argv)
 	close_connection();
 	//------------------------------------------------------------------------------
 
-	/*
+	
+	// Unreachable code
+	
 	// Free memory
 	free(home_directory);
 	free(server_name);
 	
-	exit(1);
-	*/
-	
 	// Join threads
 	for (i = 0; i < num_threads; i++) 
 	{
-		if (err = pthread_join(tid[i], NULL/*(void **) &status*/)) 
+		if ((err = pthread_join(tid[i], NULL)) != 0) 
 		{ /* wait for thread to end */
 			perror2("pthread_join", err); 
 			exit(1);

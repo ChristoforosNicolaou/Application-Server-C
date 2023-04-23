@@ -145,7 +145,7 @@ void free_parsedRequest(char* parsedRequest[MAX_HEADLINES][MAX_ARGS], int num_he
 	while(i < num_headlines)
 	{
 		j = 0;
-		while(parsedRequest[i][j]!= NULL)
+		while(j < MAX_ARGS && parsedRequest[i][j]!= NULL)
 		{
 			free(parsedRequest[i][j]);
 			j++;

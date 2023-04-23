@@ -12,6 +12,8 @@ $ make
 or
 $ gcc -o tls_server tls_server.c helper_functions.c queue.c -lssl -lcrypto -lpthread -Wno-deprecated-declarations -Wall
 
+Use "make clean" to remove executable and other .o files
+
 //-------------------------Configue------------------------//
 
 Inside config.txt you can configure the number of threads, server port, home folder and the hostname of the https server.
